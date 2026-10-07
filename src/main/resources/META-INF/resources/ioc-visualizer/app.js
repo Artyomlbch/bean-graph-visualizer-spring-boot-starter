@@ -9,19 +9,19 @@ const STEREOTYPE_COLORS = {
     'SERVICE':    { background: '#C8E6C9', border: '#4CAF50' },
     'REPOSITORY': { background: '#FFE0B2', border: '#FF9800' },
     'CONFIGURATION':{ background: '#B3E5FC', border: '#03A9F4' },
-    'UNKNOWN':    { background: '#F5F5F5', border: '#9E9E9E' } 
+    'UNKNOWN':    { background: '#F5F5F5', border: '#9E9E9E' }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     initNetwork();
     bindEvents();
-    loadGraphData(); 
+    loadGraphData();
 });
 
 function initNetwork() {
     const container = document.getElementById('network-container');
     const data = { nodes: nodesDataSet, edges: edgesDataSet };
-    
+
     const options = {
         physics: {
             forceAtlas2Based: {
@@ -54,11 +54,11 @@ function loadGraphData() {
     const requestDto = { filters: [] };
 
     if (document.getElementById('filterSystem').checked) {
-        requestDto.filters.push({ type: 'TYPE', value: 'USER' }); 
+        requestDto.filters.push({ type: 'TYPE', value: 'USER' });
     }
-    
+
     if (document.getElementById('filterSolo').checked) {
-        requestDto.filters.push({ type: 'DETAIL_LEVEL', value: 'CONNECTED_ONLY' }); 
+        requestDto.filters.push({ type: 'DETAIL_LEVEL', value: 'CONNECTED_ONLY' });
     }
 
     const packageVal = document.getElementById('filterPackage').value.trim();
@@ -77,20 +77,20 @@ function loadGraphData() {
     }
 
     fetch(API_URL, {
-        method: 'POST', 
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestDto)
     })
-    .then(response => {
-        if (!response.ok) throw new Error("Server error: " + response.status);
-        return response.json();
-    })
-    .then(data => drawGraph(data))
-    .catch(error => {
-        console.error("Error loading graph:", error);
-        nodesDataSet.clear();
-        edgesDataSet.clear();
-    });
+        .then(response => {
+            if (!response.ok) throw new Error("Server error: " + response.status);
+            return response.json();
+        })
+        .then(data => drawGraph(data))
+        .catch(error => {
+            console.error("Error loading graph:", error);
+            nodesDataSet.clear();
+            edgesDataSet.clear();
+        });
 }
 
 function drawGraph(beanGraph) {
@@ -108,16 +108,16 @@ function drawGraph(beanGraph) {
 
     if (allBackendNodes.length === 0) {
         console.warn("The graph is empty with current filters.");
-        return; 
+        return;
     }
 
     const visNodes = allBackendNodes.map(node => {
         const colors = STEREOTYPE_COLORS[node.stereotype] || STEREOTYPE_COLORS['UNKNOWN'];
-        
+
         return {
             id: node.id,
             label: node.id,
-            title: node.fullClassName, 
+            title: node.fullClassName,
             shape: 'box',
             color: {
                 background: node.isSystem ? '#E0E0E0' : colors.background,
@@ -126,7 +126,7 @@ function drawGraph(beanGraph) {
             },
             font: { color: '#333' },
             borderWidth: node.isSystem ? 1 : 2,
-            meta: node 
+            meta: node
         };
     });
 
@@ -137,11 +137,20 @@ function drawGraph(beanGraph) {
         arrows: 'to',
         font: { size: 11, align: 'top', color: '#555' },
         color: { color: '#BDBDBD', highlight: '#2196F3' },
-        dashes: false 
+        dashes: false
     }));
 
     nodesDataSet.add(visNodes);
     edgesDataSet.add(visEdges);
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }
 
 function showNodeDetails(meta) {
@@ -162,7 +171,7 @@ function showNodeDetails(meta) {
     if (outgoingEdges.length > 0) {
         dependenciesHtml = '<ul class="dependencies-list">';
         outgoingEdges.forEach(edge => {
-            dependenciesHtml += `<li><strong style="color: #0d6efd;">${edge.to}</strong> <span style="color: #777; font-size: 0.8rem;">(${edge.label})</span></li>`;
+            dependenciesHtml += `<li><strong style="color: #0d6efd;">${escapeHtml(edge.to)}</strong> <span style="color: #777; font-size: 0.8rem;">(${escapeHtml(edge.label)})</span></li>`;
         });
         dependenciesHtml += '</ul>';
     } else {
@@ -172,19 +181,19 @@ function showNodeDetails(meta) {
     infoDiv.innerHTML = `
         <div class="meta-row">
             <span class="meta-label">Component ID:</span>
-            <span class="meta-value">${meta.id}</span>
+            <span class="meta-value">${escapeHtml(meta.id)}</span>
         </div>
         <div class="meta-row">
             <span class="meta-label">Java Class:</span>
-            <span class="meta-value" style="font-size: 0.8rem;">${meta.fullClassName}</span>
+            <span class="meta-value" style="font-size: 0.8rem;">${escapeHtml(meta.fullClassName)}</span>
         </div>
         <div class="meta-row">
             <span class="meta-label">Stereotype:</span>
-            <span class="tag" style="background: #e2e3e5;">@${meta.stereotype}</span>
+            <span class="tag" style="background: #e2e3e5;">@${escapeHtml(meta.stereotype)}</span>
         </div>
         <div class="meta-row">
             <span class="meta-label">Characteristics:</span>
-            <span class="tag ${scopeClass}">${meta.scope}</span>
+            <span class="tag ${scopeClass}">${escapeHtml(meta.scope)}</span>
             <span class="tag ${typeClass}">${typeText}</span>
         </div>
         <div class="meta-row" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
@@ -213,12 +222,12 @@ function bindEvents() {
 
         if (foundNode.length > 0) {
             const nodeId = foundNode[0].id;
-            network.selectNodes([nodeId]); 
+            network.selectNodes([nodeId]);
             network.focus(nodeId, {
                 scale: 1.2,
                 animation: { duration: 1000, easingFunction: 'easeInOutQuad' }
             });
-            showNodeDetails(foundNode[0].meta); 
+            showNodeDetails(foundNode[0].meta);
         } else {
             alert('Bean with this name was not found in the current graph!');
         }
