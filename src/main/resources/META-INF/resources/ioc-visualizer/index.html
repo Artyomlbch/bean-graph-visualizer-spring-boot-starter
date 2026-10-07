@@ -5,66 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spring IoC Visualizer</title>
     <link rel="stylesheet" href="styles.css">
-    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script src="vis-network.min.js"></script>
 </head>
 <body>
-    <div id="network-container"></div>
+<div id="network-container"></div>
 
-    <div id="control-panel" class="panel">
-        <h2>IoC Visualizer</h2>
+<div id="control-panel" class="panel">
+    <h2>IoC Visualizer</h2>
 
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Bean's name (id)...">
-            <button id="searchBtn">Find</button>
-        </div>
-
-        <div class="filters">
-            <h3>Filters</h3>
-            
-            <div class="filter-group">
-                <label for="filterPackage">Package prefix:</label>
-                <input type="text" id="filterPackage" placeholder="e.g. com.example">
-            </div>
-
-            <div class="filter-group">
-                <label for="filterScope">Bean Scope:</label>
-                <select id="filterScope">
-                    <option value="ALL">All Scopes</option>
-                    <option value="SINGLETON_ONLY">Singleton Only</option>
-                    <option value="PROTOTYPE_ONLY">Prototype Only</option>
-                </select>
-            </div>
-
-            <div class="filter-group" style="margin-bottom: 15px;">
-                <label for="filterStereotype">Stereotype:</label>
-                <select id="filterStereotype">
-                    <option value="ALL">All Stereotypes</option>
-                    <option value="CONTROLLER">@Controller</option>
-                    <option value="SERVICE">@Service</option>
-                    <option value="REPOSITORY">@Repository</option>
-                    <option value="CONFIGURATION">@Configuration</option>
-                </select>
-            </div>
-
-            <label class="switch-container">
-                <input type="checkbox" id="filterSystem" checked>
-                <span class="slider"></span>
-                <span class="label-text">Hide system beans</span>
-            </label>
-            <label class="switch-container">
-                <input type="checkbox" id="filterSolo">
-                <span class="slider"></span>
-                <span class="label-text">Hide solo nodes</span>
-            </label>
-        </div>
-        <button id="applyFiltersBtn" class="primary-btn">Apply Filters</button>
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Bean's name (id)...">
+        <button id="searchBtn">Find</button>
     </div>
 
-    <div id="details-panel" class="panel hidden">
-        <h2>Bean Details</h2>
-        <div id="node-info"></div>
-    </div>
+    <div class="filters">
+        <h3>Filters</h3>
 
-    <script src="app.js"></script>
+        <div class="filter-group">
+            <label for="filterPackage">Package prefix:</label>
+            <input type="text" id="filterPackage" placeholder="e.g. com.example">
+        </div>
+
+        <div class="filter-group">
+            <label for="filterScope">Bean Scope:</label>
+            <select id="filterScope">
+                <option value="ALL">All Scopes</option>
+                <option value="SINGLETON_ONLY">Singleton Only</option>
+                <option value="PROTOTYPE_ONLY">Prototype Only</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="margin-bottom: 15px;">
+            <label for="filterStereotype">Stereotype:</label>
+            <select id="filterStereotype">
+                <option value="ALL">All Stereotypes</option>
+                <option value="CONTROLLER">@Controller</option>
+                <option value="SERVICE">@Service</option>
+                <option value="REPOSITORY">@Repository</option>
+                <option value="CONFIGURATION">@Configuration</option>
+            </select>
+        </div>
+
+        <label class="switch-container">
+            <input type="checkbox" id="filterSystem" checked>
+            <span class="slider"></span>
+            <span class="label-text">Hide system beans</span>
+        </label>
+        <label class="switch-container">
+            <input type="checkbox" id="filterSolo">
+            <span class="slider"></span>
+            <span class="label-text">Hide solo nodes</span>
+        </label>
+    </div>
+    <button id="applyFiltersBtn" class="primary-btn">Apply Filters</button>
+</div>
+
+<div id="details-panel" class="panel hidden">
+    <h2>Bean Details</h2>
+    <div id="node-info"></div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
