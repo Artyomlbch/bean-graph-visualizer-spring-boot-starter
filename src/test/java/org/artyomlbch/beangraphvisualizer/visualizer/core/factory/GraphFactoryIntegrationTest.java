@@ -17,7 +17,7 @@ import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.node;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(classes = LayeredTestApplication.class)
+@SpringBootTest(classes = LayeredTestApplication.class, properties = "ioc-visualizer.enabled=true")
 class GraphFactoryIntegrationTest {
 
     @Autowired

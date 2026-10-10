@@ -15,11 +15,9 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(classes = LayeredTestApplication.class)
+@SpringBootTest(classes = LayeredTestApplication.class, properties = "ioc-visualizer.enabled=true")
 class GraphControllerTest {
 
     private static final String GRAPH_URL = "/api/ioc-visualizer/graph";
@@ -78,5 +76,11 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.nodes[*].id", hasItem("orderController")))
                 .andExpect(jsonPath("$.nodes[*].isSystem", everyItem(is(false))))
                 .andExpect(jsonPath("$.soloNodes[*].isSystem", everyItem(is(false))));
+    }
+
+    @Test
+    void doesNotAllowRequestsFromOtherSites() throws Exception {
+        mvc.perform(post(GRAPH_URL).header("Origin", "https://some.example"))
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 }

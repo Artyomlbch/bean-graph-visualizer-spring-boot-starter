@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 
-@SpringBootTest(classes = LayeredTestApplication.class)
+@SpringBootTest(classes = LayeredTestApplication.class, properties = "ioc-visualizer.enabled=true")
 class UiResourcesTest {
 
     @Autowired
