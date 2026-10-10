@@ -4,12 +4,10 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.Filter;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.impl.*;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.pipeline.FilterPipeline;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.*;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Component
 public class FilterPipelineFactory {
 
     public FilterPipeline newInstance(GraphRequestDto requestDto) {

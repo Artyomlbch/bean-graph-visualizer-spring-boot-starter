@@ -5,9 +5,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.pipeline.Filter
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.GraphRequestDto;
-import org.springframework.stereotype.Service;
 
-@Service
 public class GraphService {
 
     private final GraphRepository graphRepository;

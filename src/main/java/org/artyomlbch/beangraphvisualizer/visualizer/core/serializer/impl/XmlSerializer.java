@@ -3,9 +3,7 @@ package org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.springframework.stereotype.Component;
 
-@Component
 public class XmlSerializer implements Serializer {
 
     private final XmlMapper xmlMapper;

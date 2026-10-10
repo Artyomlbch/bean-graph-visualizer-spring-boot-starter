@@ -2,13 +2,11 @@ package org.artyomlbch.beangraphvisualizer.visualizer.service;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Service
 public class SerializerService {
 
     private final Map<String, Serializer> serializers = new HashMap<>();

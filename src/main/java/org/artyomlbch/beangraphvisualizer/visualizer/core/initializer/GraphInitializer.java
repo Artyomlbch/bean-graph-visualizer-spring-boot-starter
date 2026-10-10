@@ -4,9 +4,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.GraphFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.stereotype.Component;
 
-@Component
 public class GraphInitializer implements ApplicationListener<ContextRefreshedEvent> {
 
     private final GraphFactory graphFactory;

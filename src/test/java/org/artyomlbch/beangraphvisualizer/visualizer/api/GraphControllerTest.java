@@ -41,10 +41,6 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.edges").isArray());
     }
 
-    /**
-     * Контракт с фронтендом: именно эти поля читает app.js.
-     * Если тест упал, значит, изменение сломает UI.
-     */
     @Test
     void jsonContainsFieldsUsedByUi() throws Exception {
         mvc.perform(post(GRAPH_URL))

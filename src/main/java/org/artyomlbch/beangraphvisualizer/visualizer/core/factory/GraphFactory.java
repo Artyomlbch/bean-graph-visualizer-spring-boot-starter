@@ -4,17 +4,12 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadat
 import org.artyomlbch.beangraphvisualizer.visualizer.model.*;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.context.ApplicationContext;
-import org.springframework.stereotype.Component;
 
 import java.lang.reflect.*;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-@Component
 public class GraphFactory {
 
     private final BeanMetadataRepository beanRepository;
@@ -22,7 +17,9 @@ public class GraphFactory {
 
     public GraphFactory(BeanMetadataRepository beanRepository, ApplicationContext context) {
         this.beanRepository = beanRepository;
-        this.userPackages = AutoConfigurationPackages.get(context);
+        this.userPackages = AutoConfigurationPackages.has(context)
+                ? AutoConfigurationPackages.get(context)
+                : List.of();
     }
 
     public BeanGraph newInstance() {

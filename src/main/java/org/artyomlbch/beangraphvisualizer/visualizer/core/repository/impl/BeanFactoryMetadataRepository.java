@@ -7,9 +7,7 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.stereotype.Repository;
 
-@Repository
 public class BeanFactoryMetadataRepository implements BeanMetadataRepository, ApplicationContextAware {
 
     private ConfigurableListableBeanFactory factory;
