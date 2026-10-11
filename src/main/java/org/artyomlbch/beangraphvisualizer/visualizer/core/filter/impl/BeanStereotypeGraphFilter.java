@@ -9,7 +9,12 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+/**
+ * Оставляет бины заданного стереотипа и их прямые зависимости
+ * Пример: для CONTROLLER остаются CONTROLLER и SERVICE, которые он использует
+ * */
 public class BeanStereotypeGraphFilter implements Filter {
 
     private final Stereotype stereotype;
@@ -20,31 +25,17 @@ public class BeanStereotypeGraphFilter implements Filter {
 
     @Override
     public BeanGraph apply(BeanGraph originalGraph) {
-        BeanGraph filteredGraph = new BeanGraph();
+        Set<String> primaryIds = Stream.concat(
+                originalGraph.getNodes().stream(),
+                originalGraph.getSoloNodes().stream()
+        ).filter(node -> node.stereotype() == stereotype).map(BeanNode::id).collect(Collectors.toSet());
 
-        List<BeanNode> primaryNodes = originalGraph.getNodes().stream()
-                .filter(node -> node.stereotype() == this.stereotype)
-                .toList();
-        primaryNodes.forEach(filteredGraph::addNode);
-
-        Set<String> primaryIds = primaryNodes.stream()
-                .map(BeanNode::id)
+        Set<String> dependencyIds = originalGraph.getEdges().stream()
+                .filter(edge -> primaryIds.contains(edge.source().id()))
+                .map(edge -> edge.target().id())
                 .collect(Collectors.toSet());
 
-        List<BeanEdge> outboundEdges = originalGraph.getEdges().stream()
-                .filter(edge -> primaryIds.contains(edge.source().id()))
-                .toList();
-        outboundEdges.forEach(filteredGraph::addEdge);
-
-        outboundEdges.stream()
-                .map(BeanEdge::target)
-                .filter(targetNode -> !primaryIds.contains(targetNode.id()))
-                .forEach(filteredGraph::addNode);
-
-        originalGraph.getSoloNodes().stream()
-                .filter(node -> node.stereotype() == this.stereotype)
-                .forEach(filteredGraph::addSoloNode);
-
-        return filteredGraph;
+        return originalGraph.subgraph(node ->
+                primaryIds.contains(node.id()) || dependencyIds.contains(node.id()));
     }
 }

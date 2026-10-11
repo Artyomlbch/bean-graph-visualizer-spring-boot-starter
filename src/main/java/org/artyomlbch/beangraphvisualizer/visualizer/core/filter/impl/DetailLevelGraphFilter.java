@@ -2,8 +2,17 @@ package org.artyomlbch.beangraphvisualizer.visualizer.core.filter.impl;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.Filter;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.DetailLevel;
 
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Оставляет либо только связанные бины, либо только одинокие
+ * FilterPipelineFactroy ставит его  последним,
+ * так как результат зависит от того, какие бины оставили другие фильтры
+ */
 public class DetailLevelGraphFilter implements Filter {
 
     private final DetailLevel detailLevel;
@@ -14,17 +23,13 @@ public class DetailLevelGraphFilter implements Filter {
 
     @Override
     public BeanGraph apply(BeanGraph originalGraph) {
-        BeanGraph filteredGraph = new BeanGraph();
+        Set<String> soloIds = originalGraph.getSoloNodes().stream()
+                .map(BeanNode::id)
+                .collect(Collectors.toSet());
 
-        if (detailLevel == DetailLevel.CONNECTED_ONLY) {
-            originalGraph.getNodes().forEach(filteredGraph::addNode);
-        } else if (detailLevel == DetailLevel.SOLO_ONLY) {
-            originalGraph.getSoloNodes().forEach(filteredGraph::addSoloNode);
-        } else {
-            originalGraph.getNodes().forEach(filteredGraph::addNode);
-            originalGraph.getSoloNodes().forEach(filteredGraph::addSoloNode);
-        }
-
-        return filteredGraph;
+        return switch (detailLevel) {
+            case CONNECTED_ONLY -> originalGraph.subgraph(node -> !soloIds.contains(node.id()));
+            case SOLO_ONLY -> originalGraph.subgraph(node -> soloIds.contains(node.id()));
+        };
     }
 }

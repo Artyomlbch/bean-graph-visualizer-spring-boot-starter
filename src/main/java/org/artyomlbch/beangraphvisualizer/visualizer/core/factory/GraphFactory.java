@@ -23,37 +23,33 @@ public class GraphFactory {
     }
 
     public BeanGraph newInstance() {
-        BeanGraph graph = new BeanGraph();
         String[] beanNames = beanRepository.getBeanDefinitionNames();
 
-        Map<String, BeanNode> nodeCache = new HashMap<>();
+        Map<String, BeanNode> nodeCache = new LinkedHashMap<>();
         for (String name : beanNames) {
             nodeCache.put(name, createNode(name, beanRepository));
         }
 
+        List<BeanEdge> edges = new ArrayList<>();
         for (String beanName : beanNames) {
-            BeanNode currentNode = nodeCache.get(beanName);
             String[] dependencies = beanRepository.getDependenciesForBean(beanName);
+            if (dependencies.length == 0) continue;
 
-            if (dependencies.length == 0) {
-                graph.addSoloNode(currentNode);
-            } else {
-                graph.addNode(currentNode);
+            BeanNode currentNode = nodeCache.get(beanName);
+            Class<?> beanClass = beanRepository.getBeanClass(beanName);
+            for (String depName : dependencies) {
+                if (beanName.equals((depName))) continue;
 
-                Class<?> beanClass = beanRepository.getBeanClass(beanName);
-                for (String depName : dependencies) {
-                    if (beanName.equals(depName)) continue;
+                BeanNode depNode = nodeCache.get(depName);
+                if (depName == null) continue;
 
-                    BeanNode depNode = nodeCache.get(depName);
-                    if (depNode == null) continue;
-
-                    Class<?> depClass = beanRepository.getBeanClass(depName);
-                    InjectionType type = determineInjectionType(beanClass, depClass, beanRepository);
-                    graph.addEdge(new BeanEdge(currentNode, depNode, type));
-                }
+                Class<?> depClass = beanRepository.getBeanClass(depName);
+                InjectionType type = determineInjectionType(beanClass, depClass, beanRepository);
+                edges.add(new BeanEdge(currentNode, depNode, type));
             }
         }
-        return graph;
+
+        return BeanGraph.of(nodeCache.values(), edges);
     }
 
     private BeanNode createNode(String beanName, BeanMetadataRepository beanRepository) {
