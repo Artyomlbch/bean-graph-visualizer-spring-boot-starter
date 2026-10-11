@@ -4,6 +4,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -27,5 +28,15 @@ public final class GraphLookup {
                 .filter(edge -> edge.source().id().equals(from) && edge.target().id().equals(to))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Graph has no edge " + from + " -> " + to));
+    }
+
+    public static List<String> ids(Collection<BeanNode> nodes) {
+        return nodes.stream().map(BeanNode::id).toList();
+    }
+
+    public static List<String> edgeKeys(BeanGraph graph) {
+        return graph.getEdges().stream()
+                .map(edge -> edge.source().id() + " -> " + edge.target().id())
+                .toList();
     }
 }

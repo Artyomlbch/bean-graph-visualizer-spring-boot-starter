@@ -10,10 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.startsWith;
+import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -78,5 +75,67 @@ class GraphControllerTest {
     void doesNotAllowRequestsFromOtherSites() throws Exception {
         mvc.perform(post(GRAPH_URL).header("Origin", "https://some.example"))
                 .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
+
+    @Test
+    void hidingSoloBeansKeepsEdges() throws Exception {
+        mvc.perform(post(GRAPH_URL)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"filters": [
+                            {"type": "TYPE", "value": "USER"},
+                            {"type": "DETAIL_LEVEL", "value": "CONNECTED_ONLY"}
+                        ]}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.soloNodes").isEmpty())
+                .andExpect(jsonPath("$.edges[*].target.id", hasItem("orderRepository")));
+    }
+
+    @Test
+    void emptyRequestObjectIsAccepted() throws Exception {
+        mvc.perform(post(GRAPH_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void filterWithoutTypeIsBadRequest() throws Exception {
+        mvc.perform(post(GRAPH_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"filters": [{"value": "USER"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("type is required")));
+    }
+
+    @Test
+    void wrongFilterValueIsBadRequest() throws Exception {
+        mvc.perform(post(GRAPH_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"filters": [{"type": "SCOPE", "value": "EVERYTHING"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("SINGLETON_ONLY")));
+    }
+
+    @Test
+    void unknownFilterTypeIsBadRequest() throws Exception {
+        mvc.perform(post(GRAPH_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"filters": [{"type": "COLOR", "value": "RED"}]}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unknownFormatIsBadRequest() throws Exception {
+        mvc.perform(post(GRAPH_URL).param("format", "yaml"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("yaml")));
     }
 }

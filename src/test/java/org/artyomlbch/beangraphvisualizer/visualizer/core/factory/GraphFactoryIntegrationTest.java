@@ -12,8 +12,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.List;
 
+import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphAssertions.assertConsistent;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.allNodes;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.edge;
+import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.ids;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.node;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -67,5 +69,16 @@ class GraphFactoryIntegrationTest {
                 .isEqualTo(InjectionType.FIELD);
         assertThat(edge(graph(), "injectionShowcase", "setterDependency").injectionType())
                 .isEqualTo(InjectionType.SETTER);
+    }
+
+    @Test
+    void beanWithIncomingEdgesIsNotSolo() {
+        assertThat(ids(graph().getNodes()).contains("orderRepository"));
+        assertThat(ids(graph().getSoloNodes())).doesNotContain("orderRepository");
+    }
+
+    @Test
+    void builtGraphIsConsistent() {
+        assertConsistent(graph());
     }
 }
