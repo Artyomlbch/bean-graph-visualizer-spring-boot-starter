@@ -28,7 +28,7 @@ public final class BeanGraph {
         for (BeanEdge edge : edges) {
             String sourceId = edge.source().id();
             String targetId = edge.target().id();
-            if (nodesById.containsKey(sourceId) &&  nodesById.containsKey(targetId)) {
+            if (nodesById.containsKey(sourceId) && nodesById.containsKey(targetId)) {
                 keptEdges.add(edge);
                 connectedIds.add(sourceId);
                 connectedIds.add(targetId);

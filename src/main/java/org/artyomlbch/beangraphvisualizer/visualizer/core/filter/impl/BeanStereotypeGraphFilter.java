@@ -14,6 +14,7 @@ import java.util.stream.Stream;
 /**
  * Оставляет бины заданного стереотипа и их прямые зависимости
  * Пример: для CONTROLLER остаются CONTROLLER и SERVICE, которые он использует
+ * Если две зависимости бины тоже связаны, это ребро остается
  * */
 public class BeanStereotypeGraphFilter implements Filter {
 

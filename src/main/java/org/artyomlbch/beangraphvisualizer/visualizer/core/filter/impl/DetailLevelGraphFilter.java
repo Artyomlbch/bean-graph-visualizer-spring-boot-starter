@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * Оставляет либо только связанные бины, либо только одинокие
- * FilterPipelineFactroy ставит его  последним,
+ * FilterPipelineFactory ставит его  последним,
  * так как результат зависит от того, какие бины оставили другие фильтры
  */
 public class DetailLevelGraphFilter implements Filter {

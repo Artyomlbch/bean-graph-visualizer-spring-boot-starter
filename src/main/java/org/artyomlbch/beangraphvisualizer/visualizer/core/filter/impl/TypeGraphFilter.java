@@ -8,6 +8,9 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.GraphType;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Оставляет либо системные, либо пользовательские бины
+ */
 public class TypeGraphFilter implements Filter {
 
     private final GraphType graphType;
