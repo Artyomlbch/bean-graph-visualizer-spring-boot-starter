@@ -4,6 +4,8 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.GraphRequestDto;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -24,5 +26,12 @@ public class GraphController {
     ) {
         BeanGraph graph = graphService.getGraph(requestDto);
         return serializerService.serialize(graph, format);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleBadRequest(IllegalArgumentException e) {
+        return ResponseEntity.badRequest()
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(e.getMessage());
     }
 }
