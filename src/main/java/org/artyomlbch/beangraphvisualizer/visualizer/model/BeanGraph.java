@@ -1,7 +1,5 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.model;
 
-import org.springframework.context.annotation.Bean;
-
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Stream;

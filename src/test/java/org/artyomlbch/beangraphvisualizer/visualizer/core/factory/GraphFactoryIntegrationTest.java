@@ -73,12 +73,17 @@ class GraphFactoryIntegrationTest {
 
     @Test
     void beanWithIncomingEdgesIsNotSolo() {
-        assertThat(ids(graph().getNodes()).contains("orderRepository"));
+        assertThat(ids(graph().getNodes())).contains("orderRepository");
         assertThat(ids(graph().getSoloNodes())).doesNotContain("orderRepository");
     }
 
     @Test
     void builtGraphIsConsistent() {
         assertConsistent(graph());
+    }
+
+    @Test
+    void dependencyWithoutBeanDefinitionIsSkipped() {
+        assertThat(ids(graph().getSoloNodes())).contains("environmentReader");
     }
 }

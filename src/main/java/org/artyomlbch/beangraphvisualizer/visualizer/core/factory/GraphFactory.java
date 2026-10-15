@@ -8,7 +8,10 @@ import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class GraphFactory {
 
@@ -38,10 +41,10 @@ public class GraphFactory {
             BeanNode currentNode = nodeCache.get(beanName);
             Class<?> beanClass = beanRepository.getBeanClass(beanName);
             for (String depName : dependencies) {
-                if (beanName.equals((depName))) continue;
+                if (beanName.equals(depName)) continue;
 
                 BeanNode depNode = nodeCache.get(depName);
-                if (depName == null) continue;
+                if (depNode == null) continue;
 
                 Class<?> depClass = beanRepository.getBeanClass(depName);
                 InjectionType type = determineInjectionType(beanClass, depClass, beanRepository);

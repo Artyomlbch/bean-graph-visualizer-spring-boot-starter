@@ -51,7 +51,7 @@ public class FilterPipelineFactory {
             return Enum.valueOf(enumType, dto.value().trim());
         }  catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
-                    "Wrong value '" + dto.value() +"' for filter" + dto.type()
+                    "Wrong value '" + dto.value() +"' for filter " + dto.type()
                     + ". Allowed values: " + Arrays.toString(enumType.getEnumConstants())
             );
         }

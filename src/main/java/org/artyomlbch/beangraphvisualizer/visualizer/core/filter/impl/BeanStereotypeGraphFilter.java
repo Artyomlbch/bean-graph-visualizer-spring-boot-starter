@@ -1,12 +1,10 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.filter.impl;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.Filter;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;

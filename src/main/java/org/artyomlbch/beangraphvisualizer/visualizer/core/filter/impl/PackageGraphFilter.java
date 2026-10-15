@@ -1,13 +1,10 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.filter.impl;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.filter.Filter;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.*;
-
-import java.util.Set;
-import java.util.stream.Collectors;
+import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 
 /**
- * Оставляет бины, пакет которых совпадает с заданным
+ * Оставляет бины, перфикс класса которого совпадает с заданным
  */
 public class PackageGraphFilter implements Filter {
 
