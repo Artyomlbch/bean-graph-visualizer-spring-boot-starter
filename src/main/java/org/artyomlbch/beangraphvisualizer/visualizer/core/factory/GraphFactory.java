@@ -6,12 +6,14 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.stereotype.Controller;
+import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Service;
 
 import java.lang.reflect.*;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class GraphFactory {
 
@@ -43,6 +45,8 @@ public class GraphFactory {
             for (String depName : dependencies) {
                 if (beanName.equals(depName)) continue;
 
+                // Зависимость может быть объектом, который Spring зарегистрировал
+                // без определения бина (например, environment). Таких узлов в графе нет
                 BeanNode depNode = nodeCache.get(depName);
                 if (depNode == null) continue;
 
@@ -68,16 +72,7 @@ public class GraphFactory {
         int role = BeanDefinition.ROLE_APPLICATION;
 
         if (beanClass != null) {
-            if (beanClass.isAnnotationPresent(org.springframework.web.bind.annotation.RestController.class) ||
-                    beanClass.isAnnotationPresent(org.springframework.stereotype.Controller.class)) {
-                stereotype = Stereotype.CONTROLLER;
-            } else if (beanClass.isAnnotationPresent(org.springframework.stereotype.Service.class)) {
-                stereotype = Stereotype.SERVICE;
-            } else if (beanClass.isAnnotationPresent(org.springframework.stereotype.Repository.class)) {
-                stereotype = Stereotype.REPOSITORY;
-            } else if (beanClass.isAnnotationPresent(org.springframework.context.annotation.Configuration.class)) {
-                stereotype = Stereotype.CONFIGURATION;
-            }
+            stereotype = detectStereotype(beanClass);
         }
 
         try {
@@ -94,13 +89,33 @@ public class GraphFactory {
         return new BeanNode(beanName, className, scope, isSystem, stereotype);
     }
 
+    // Поиск стереотипных аннотаций с учетом вложенных аннотаций
+    private static Stereotype detectStereotype(Class<?> beanClass) {
+        if (AnnotatedElementUtils.hasAnnotation(beanClass, Controller.class)) return Stereotype.CONTROLLER;
+        if (AnnotatedElementUtils.hasAnnotation(beanClass, Service.class)) return Stereotype.SERVICE;
+        if (AnnotatedElementUtils.hasAnnotation(beanClass, Repository.class)) return Stereotype.REPOSITORY;
+        if (AnnotatedElementUtils.hasAnnotation(beanClass, Configuration.class)) return Stereotype.CONFIGURATION;
+        return Stereotype.UNKNOWN;
+    }
+
     private boolean isSystemBean(String className, int role) {
         if (className == null || "Unknown".equals(className)) return true;
         if (role == BeanDefinition.ROLE_INFRASTRUCTURE || role == BeanDefinition.ROLE_SUPPORT) return true;
 
-        boolean isUserBean = userPackages.stream().anyMatch(className::startsWith);
+        return !belongsToPackages(className, userPackages);
+    }
 
-        return !isUserBean;
+    /**
+     * Определяет, лежит ла класс в одном из пакетов или подпакетах
+     * Без модификатора доступа, чтобы его мог использовать тест,
+     * у которого пакет тоже core.factory, сам стартер его видеть не будет
+     * TODO: может, стоит убрать метод отсюда
+     */
+    static boolean belongsToPackages(String className, List<String> packages) {
+        return packages.stream()
+                .anyMatch(pkg -> pkg.isEmpty()
+                        || className.startsWith(pkg + ".")
+                );
     }
 
     private InjectionType determineInjectionType(Class<?> beanClass, Class<?> depClass, BeanMetadataRepository beanRepository) {
