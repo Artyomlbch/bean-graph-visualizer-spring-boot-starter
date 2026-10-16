@@ -4,5 +4,8 @@ public enum InjectionType {
     CONSTRUCTOR,
     FIELD,
     SETTER,
+
+    // параметр @Bean-метода
+    FACTORY_METHOD,
     UNKNOWN
 }

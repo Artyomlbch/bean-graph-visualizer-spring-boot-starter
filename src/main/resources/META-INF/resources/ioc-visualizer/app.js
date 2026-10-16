@@ -130,15 +130,20 @@ function drawGraph(beanGraph) {
         };
     });
 
-    const visEdges = backendEdges.map(edge => ({
-        from: edge.source.id,
-        to: edge.target.id,
-        label: edge.injectionType,
-        arrows: 'to',
-        font: { size: 11, align: 'top', color: '#555' },
-        color: { color: '#BDBDBD', highlight: '#2196F3' },
-        dashes: false
-    }));
+    const visEdges = backendEdges.map(edge => {
+        // Служебные связи (DECLARED_IN, DEPENDS_ON) рисуются пунктиром
+        // и подписываются видом связи, внедрения — сплошной линией и способом внедрения
+        const isInjection = !edge.kind || edge.kind === 'INJECTION';
+        return {
+            from: edge.source.id,
+            to: edge.target.id,
+            label: isInjection ? edge.injectionType : edge.kind,
+            arrows: 'to',
+            font: { size: 11, align: 'top', color: '#555' },
+            color: { color: '#BDBDBD', highlight: '#2196F3' },
+            dashes: !isInjection
+        };
+    });
 
     nodesDataSet.add(visNodes);
     edgesDataSet.add(visEdges);

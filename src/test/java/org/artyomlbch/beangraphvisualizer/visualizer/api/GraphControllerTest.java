@@ -48,6 +48,7 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.nodes[0].stereotype").exists())
                 .andExpect(jsonPath("$.edges[0].source.id").exists())
                 .andExpect(jsonPath("$.edges[0].target.id").exists())
+                .andExpect(jsonPath("$.edges[0].kind").exists())
                 .andExpect(jsonPath("$.edges[0].injectionType").exists());
     }
 

@@ -7,8 +7,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Проверяет, как GraphFactory решает, что класс лежит в пакете пользователя.
- * Тест в том же пакете, что и GraphFactory, поэтому видит метод без модификатора доступа.
+ *
  */
 class UserPackagesTest {
 
