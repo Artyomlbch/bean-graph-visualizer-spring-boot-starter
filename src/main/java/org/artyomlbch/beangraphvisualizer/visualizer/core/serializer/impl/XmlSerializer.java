@@ -1,24 +1,16 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 public class XmlSerializer implements Serializer {
 
-    private final XmlMapper xmlMapper;
-
-    public XmlSerializer() {
-        this.xmlMapper = new XmlMapper();
-    }
+    private final XmlMapper xmlMapper = XmlMapper.builder().build();
 
     @Override
     public String serialize(BeanGraph graph) {
-        try {
-            return xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(graph);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to serialize graph to XML", e);
-        }
+        return xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(graph);
     }
 }
 

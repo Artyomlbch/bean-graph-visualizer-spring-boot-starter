@@ -3,9 +3,12 @@ package org.artyomlbch.beangraphvisualizer.visualizer;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.JsonSerializer;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.XmlSerializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,5 +73,17 @@ public class IocVisualizerAutoConfigurationTest {
         webRunner.withPropertyValues("ioc-visualizer.enabled=true")
                 .withBean(GraphRepository.class, () -> custom)
                 .run(context -> assertThat(context.getBean(GraphRepository.class)).isSameAs(custom));
+    }
+
+    @Test
+    void xmlSerializerRequiresJacksonXmlModule() {
+        webRunner.withPropertyValues("ioc-visualizer.enabled=true")
+                // FilteredClassLoader делает вид, что класса нет
+                .withClassLoader(new FilteredClassLoader("tools.jackson.dataformat.xml"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(XmlSerializer.class);
+                    assertThat(context).hasSingleBean(JsonSerializer.class);
+                });
     }
 }

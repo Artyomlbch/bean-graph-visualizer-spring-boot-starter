@@ -102,7 +102,7 @@ public class EdgeResolver {
     /**
      * перебирает все точки внедрения бина и выбирает ту, которая подходит лучше всего
      * при совпадении побеждает точка, найденная раньше в порядке
-     * конструктор или @Bean-метод -> @Bean-методы -> поля
+     * конструктор или @Bean-метод -> @Autowired-методы -> поля
      */
     private InjectionType findInjectionPoint(String beanName, BeanDefinition definition, String dependencyName) {
         Class<?> beanClass = repository.getBeanClass(beanName);

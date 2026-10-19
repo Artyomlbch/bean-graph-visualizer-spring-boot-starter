@@ -13,10 +13,7 @@ import java.util.Optional;
 import static org.artyomlbch.beangraphvisualizer.visualizer.core.resolver.EdgeResolver.injectionConstructors;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Юнит-тесты правил, по которым InjectionResolver сравнивает типы.
- * Spring-контекст не нужен: проверяются только типы полей и конструкторы классов ниже.
- */
+// Юнит-тесты правил, по которым edge resolver сравнивает типы
 class EdgeResolverTest {
 
     interface Exporter {

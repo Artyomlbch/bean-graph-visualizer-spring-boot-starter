@@ -23,10 +23,11 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-autoconfigure")
     compileOnly("org.springframework.boot:spring-boot-starter-web")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml")
+    compileOnly("tools.jackson.dataformat:jackson-dataformat-xml")
 
     // test
     testImplementation("org.springframework.boot:spring-boot-starter-web")
+    testImplementation("tools.jackson.dataformat:jackson-dataformat-xml")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

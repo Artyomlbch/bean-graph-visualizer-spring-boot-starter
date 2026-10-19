@@ -6,9 +6,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- *
- */
 class UserPackagesTest {
 
     private static final List<String> USER_PACKAGES = List.of("com.foo");

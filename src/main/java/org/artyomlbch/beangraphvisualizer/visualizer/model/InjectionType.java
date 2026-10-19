@@ -2,7 +2,7 @@ package org.artyomlbch.beangraphvisualizer.visualizer.model;
 
 /**
  * способ внедрения зависимости (имеет смысл только для EdgeKind.INJECTION)
- * у служебных ребер всегда UNKNOWN
+ * у служебных ребер null
  *
  * CONSTRUCTOR - параметр конструктора
  * FIELD - поле @Autowired, @Inject, @Resource
