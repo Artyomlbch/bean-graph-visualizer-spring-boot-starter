@@ -3,68 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spring IoC Visualizer</title>
+    <title>Bean graph</title>
     <link rel="stylesheet" href="styles.css">
     <script src="vis-network.min.js"></script>
 </head>
 <body>
-<div id="network-container"></div>
+<div class="layout">
+    <aside class="sidebar" aria-label="Graph controls">
+        <header>
+            <h1>Bean graph</h1>
+            <p class="status" id="graphStatus" role="status">Loading graph…</p>
+        </header>
 
-<div id="control-panel" class="panel">
-    <h2>IoC Visualizer</h2>
-
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Bean's name (id)...">
-        <button id="searchBtn">Find</button>
-    </div>
-
-    <div class="filters">
-        <h3>Filters</h3>
-
-        <div class="filter-group">
-            <label for="filterPackage">Package prefix:</label>
-            <input type="text" id="filterPackage" placeholder="e.g. com.example">
+        <div>
+            <form class="search" id="searchForm" role="search">
+                <label class="visually-hidden" for="searchInput">Find a bean</label>
+                <input type="search" id="searchInput" placeholder="Find a bean by name" autocomplete="off" spellcheck="false">
+                <button type="submit" id="searchBtn">Find</button>
+            </form>
+            <p class="search-message" id="searchMessage" role="status"></p>
         </div>
 
-        <div class="filter-group">
-            <label for="filterScope">Bean Scope:</label>
-            <select id="filterScope">
-                <option value="ALL">All Scopes</option>
-                <option value="SINGLETON_ONLY">Singleton Only</option>
-                <option value="PROTOTYPE_ONLY">Prototype Only</option>
-            </select>
-        </div>
+        <section class="filters" aria-labelledby="filtersTitle">
+            <h2 id="filtersTitle">Show</h2>
 
-        <div class="filter-group" style="margin-bottom: 15px;">
-            <label for="filterStereotype">Stereotype:</label>
-            <select id="filterStereotype">
-                <option value="ALL">All Stereotypes</option>
-                <option value="CONTROLLER">@Controller</option>
-                <option value="SERVICE">@Service</option>
-                <option value="REPOSITORY">@Repository</option>
-                <option value="CONFIGURATION">@Configuration</option>
-            </select>
-        </div>
+            <label class="toggle">
+                <input type="checkbox" id="filterSystem" checked>
+                <span class="toggle-track" aria-hidden="true"></span>
+                <span>Only application beans</span>
+            </label>
+            <label class="toggle">
+                <input type="checkbox" id="filterSolo">
+                <span class="toggle-track" aria-hidden="true"></span>
+                <span>Hide beans without links</span>
+            </label>
 
-        <label class="switch-container">
-            <input type="checkbox" id="filterSystem" checked>
-            <span class="slider"></span>
-            <span class="label-text">Hide system beans</span>
-        </label>
-        <label class="switch-container">
-            <input type="checkbox" id="filterSolo">
-            <span class="slider"></span>
-            <span class="label-text">Hide solo nodes</span>
-        </label>
-    </div>
-    <button id="applyFiltersBtn" class="primary-btn">Apply Filters</button>
+            <div class="field">
+                <label for="filterPackage">Package starts with</label>
+                <input type="text" id="filterPackage" placeholder="com.example.orders" spellcheck="false">
+            </div>
+
+            <div class="field">
+                <label for="filterScope">Scope</label>
+                <select id="filterScope">
+                    <option value="ALL">Any</option>
+                    <option value="SINGLETON_ONLY">Singleton</option>
+                    <option value="PROTOTYPE_ONLY">Prototype</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="filterStereotype">Stereotype</label>
+                <select id="filterStereotype" aria-describedby="stereotypeHint">
+                    <option value="ALL">Any</option>
+                    <option value="CONTROLLER">@Controller</option>
+                    <option value="SERVICE">@Service</option>
+                    <option value="REPOSITORY">@Repository</option>
+                    <option value="CONFIGURATION">@Configuration</option>
+                </select>
+                <p class="hint" id="stereotypeHint">Beans of this stereotype and the beans they use.</p>
+            </div>
+        </section>
+
+        <section class="legend" aria-labelledby="legendTitle">
+            <h2 id="legendTitle">Legend</h2>
+            <ul class="legend-list">
+                <li><span class="swatch swatch-controller"></span>Controller</li>
+                <li><span class="swatch swatch-service"></span>Service</li>
+                <li><span class="swatch swatch-repository"></span>Repository</li>
+                <li><span class="swatch swatch-configuration"></span>Configuration</li>
+                <li><span class="swatch swatch-other"></span>Other application bean</li>
+                <li><span class="swatch swatch-framework"></span>Framework or library bean</li>
+            </ul>
+            <ul class="legend-list">
+                <li>
+                    <svg class="line-sample" width="30" height="10" viewBox="0 0 30 10" aria-hidden="true">
+                        <line x1="1" y1="5" x2="23" y2="5" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M22 1.5 L29 5 L22 8.5 Z" fill="currentColor"/>
+                    </svg>
+                    Injected dependency
+                </li>
+                <li>
+                    <svg class="line-sample" width="30" height="10" viewBox="0 0 30 10" aria-hidden="true">
+                        <line x1="1" y1="5" x2="23" y2="5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+                        <path d="M22 1.5 L29 5 L22 8.5 Z" fill="currentColor"/>
+                    </svg>
+                    Declared in, @DependsOn
+                </li>
+            </ul>
+        </section>
+    </aside>
+
+    <main class="canvas">
+        <div id="network-container" aria-label="Dependency graph"></div>
+        <p class="canvas-message" id="canvasMessage" hidden></p>
+        <button type="button" class="fit-button" id="fitBtn">Fit graph</button>
+
+        <aside class="details" id="details-panel" aria-label="Bean details" aria-hidden="true" inert>
+            <button type="button" class="details-close" id="detailsClose" aria-label="Close details">×</button>
+            <div id="node-info"></div>
+        </aside>
+    </main>
 </div>
-
-<div id="details-panel" class="panel hidden">
-    <h2>Bean Details</h2>
-    <div id="node-info"></div>
-</div>
-
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,16 +1,44 @@
-let network = null;
-let nodesDataSet = new vis.DataSet();
-let edgesDataSet = new vis.DataSet();
-
 const API_URL = '/api/ioc-visualizer/graph';
 
-const STEREOTYPE_COLORS = {
-    'CONTROLLER': { background: '#D1C4E9', border: '#673AB7' },
-    'SERVICE':    { background: '#C8E6C9', border: '#4CAF50' },
-    'REPOSITORY': { background: '#FFE0B2', border: '#FF9800' },
-    'CONFIGURATION':{ background: '#B3E5FC', border: '#03A9F4' },
-    'UNKNOWN':    { background: '#F5F5F5', border: '#9E9E9E' }
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Цвета узлов по стереотипу: заливка, рамка и текст. Совпадают с легендой в styles.css
+const STEREOTYPES = {
+    CONTROLLER:    { name: 'Controller',    fill: '#EFE9FC', border: '#6A3FC9', text: '#3A1F7A' },
+    SERVICE:       { name: 'Service',       fill: '#DFF3EC', border: '#13806C', text: '#0B4D41' },
+    REPOSITORY:    { name: 'Repository',    fill: '#FCEDD6', border: '#B26A0C', text: '#6B3F06' },
+    CONFIGURATION: { name: 'Configuration', fill: '#FBE4EE', border: '#B0386B', text: '#6A1F3F' },
+    UNKNOWN:       { name: 'No stereotype', fill: '#FFFFFF', border: '#67768A', text: '#1C2631' }
 };
+const FRAMEWORK_STYLE = { fill: '#F4F6F8', border: '#A4AFBB', text: '#5B6877' };
+
+const INK = '#1C2631';
+const PAPER = '#EBEFF3';
+const GRID_COLOR = '#C3CCD6';
+const EDGE_COLOR = '#7A8696';
+const SERVICE_EDGE_COLOR = '#A4AFBB';
+const LABEL_COLOR = '#5B6877';
+const UI_FONT = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Arial, sans-serif';
+const CODE_FONT = '"Cascadia Mono", "JetBrains Mono", Consolas, "SFMono-Regular", Menlo, monospace';
+
+// Подписи рёбер и списков в панели деталей
+const LINK_LABELS = {
+    CONSTRUCTOR: 'constructor',
+    FIELD: 'field',
+    SETTER: 'method',
+    FACTORY_METHOD: '@Bean method',
+    UNKNOWN: 'unknown',
+    DECLARED_IN: 'declared in',
+    DEPENDS_ON: '@DependsOn'
+};
+
+const nodesDataSet = new vis.DataSet();
+const edgesDataSet = new vis.DataSet();
+let network = null;
+let selectedId = null;
+let requestCounter = 0;
+
+const byId = (id) => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', () => {
     initNetwork();
@@ -19,226 +47,447 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initNetwork() {
-    const container = document.getElementById('network-container');
-    const data = { nodes: nodesDataSet, edges: edgesDataSet };
-
     const options = {
         physics: {
+            solver: 'forceAtlas2Based',
             forceAtlas2Based: {
                 gravitationalConstant: -150,
                 centralGravity: 0.01,
-                springLength: 100,
+                springLength: 130,
                 springConstant: 0.08
             },
-            solver: 'forceAtlas2Based',
-            stabilization: { iterations: 200 }
+            stabilization: { iterations: 250 }
         },
         layout: { improvedLayout: true },
-        interaction: { hover: true, tooltipDelay: 200 }
+        interaction: { hover: true, tooltipDelay: 300 },
+        nodes: {
+            shape: 'box',
+            margin: { top: 7, right: 10, bottom: 7, left: 10 },
+            font: { face: CODE_FONT, size: 13 },
+            shapeProperties: { borderRadius: 4 }
+        },
+        edges: {
+            width: 1.2,
+            selectionWidth: 0.8,
+            arrows: { to: { enabled: true, scaleFactor: 0.55 } },
+            smooth: { type: 'continuous' },
+            font: { face: UI_FONT, size: 10, color: LABEL_COLOR, strokeWidth: 4, strokeColor: PAPER, align: 'middle' },
+            // При сильном отдалении подписи рёбер скрываются, чтобы не превращаться в шум
+            scaling: { label: { drawThreshold: 8 } }
+        }
     };
 
-    network = new vis.Network(container, data, options);
+    network = new vis.Network(byId('network-container'), { nodes: nodesDataSet, edges: edgesDataSet }, options);
 
-    network.on("selectNode", (params) => {
-        const nodeId = params.nodes[0];
-        const nodeData = nodesDataSet.get(nodeId);
-        showNodeDetails(nodeData.meta);
+    network.on('beforeDrawing', drawGrid);
+
+    // Когда раскладка готова, физика выключается: граф перестаёт «плыть», пока его разглядывают.
+    // Перетаскивать узлы по-прежнему можно
+    network.on('stabilizationIterationsDone', () => {
+        network.setOptions({ physics: { enabled: false } });
+        network.fit();
     });
-
-    network.on("deselectNode", () => {
-        document.getElementById('details-panel').classList.add('hidden');
+    network.on('selectNode', (params) => selectBean(params.nodes[0], { focus: false }));
+    network.on('deselectNode', (params) => {
+        if (params.nodes.length === 0) {
+            clearSelection();
+        }
     });
 }
 
-function loadGraphData() {
-    const requestDto = { filters: [] };
+// Сетка точек рисуется в координатах графа, поэтому двигается и масштабируется вместе с ним
+function drawGrid(ctx) {
+    const container = byId('network-container');
+    const scale = network.getScale();
 
-    if (document.getElementById('filterSystem').checked) {
-        requestDto.filters.push({ type: 'TYPE', value: 'USER' });
+    let step = 24;
+    while (step * scale < 14) {
+        step *= 2;
     }
 
-    if (document.getElementById('filterSolo').checked) {
-        requestDto.filters.push({ type: 'DETAIL_LEVEL', value: 'CONNECTED_ONLY' });
+    const topLeft = network.DOMtoCanvas({ x: 0, y: 0 });
+    const bottomRight = network.DOMtoCanvas({ x: container.clientWidth, y: container.clientHeight });
+    const dot = 1.6 / scale;
+
+    ctx.save();
+    ctx.fillStyle = GRID_COLOR;
+    for (let x = Math.floor(topLeft.x / step) * step; x <= bottomRight.x; x += step) {
+        for (let y = Math.floor(topLeft.y / step) * step; y <= bottomRight.y; y += step) {
+            ctx.fillRect(x - dot / 2, y - dot / 2, dot, dot);
+        }
+    }
+    ctx.restore();
+}
+
+// Загрузка графа
+
+function buildRequest() {
+    const filters = [];
+
+    if (byId('filterSystem').checked) {
+        filters.push({ type: 'TYPE', value: 'USER' });
+    }
+    if (byId('filterSolo').checked) {
+        filters.push({ type: 'DETAIL_LEVEL', value: 'CONNECTED_ONLY' });
     }
 
-    const packageVal = document.getElementById('filterPackage').value.trim();
-    if (packageVal) {
-        requestDto.filters.push({ type: 'PACKAGE', value: packageVal });
+    const packagePrefix = byId('filterPackage').value.trim();
+    if (packagePrefix) {
+        filters.push({ type: 'PACKAGE', value: packagePrefix });
     }
 
-    const scopeVal = document.getElementById('filterScope').value;
-    if (scopeVal !== 'ALL') {
-        requestDto.filters.push({ type: 'SCOPE', value: scopeVal });
+    const scope = byId('filterScope').value;
+    if (scope !== 'ALL') {
+        filters.push({ type: 'SCOPE', value: scope });
     }
 
-    const stereoVal = document.getElementById('filterStereotype').value;
-    if (stereoVal !== 'ALL') {
-        requestDto.filters.push({ type: 'STEREOTYPE', value: stereoVal });
+    const stereotype = byId('filterStereotype').value;
+    if (stereotype !== 'ALL') {
+        filters.push({ type: 'STEREOTYPE', value: stereotype });
     }
 
-    fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestDto)
-    })
-        .then(response => {
-            if (!response.ok) throw new Error("Server error: " + response.status);
-            return response.json();
-        })
-        .then(data => drawGraph(data))
-        .catch(error => {
-            console.error("Error loading graph:", error);
-            nodesDataSet.clear();
-            edgesDataSet.clear();
+    return { filters };
+}
+
+async function loadGraphData() {
+    // Если фильтры меняют быстрее, чем приходит ответ, рисуем только последний ответ
+    const requestNumber = ++requestCounter;
+    setStatus('Loading graph…');
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildRequest())
         });
+        if (requestNumber !== requestCounter) return;
+
+        if (!response.ok) {
+            showLoadError(response.status, await response.text());
+            return;
+        }
+        drawGraph(await response.json());
+    } catch (error) {
+        if (requestNumber === requestCounter) {
+            showLoadError(0, '');
+        }
+    }
+}
+
+function showLoadError(status, body) {
+    clearGraph();
+    setStatus('Graph not loaded');
+
+    if (status === 404) {
+        showCanvasMessage('The graph API is not available. Check that the application sets ioc-visualizer.enabled=true.');
+    } else if (status === 400) {
+        showCanvasMessage('The server rejected the filters: ' + (body || 'bad request') + '.');
+    } else if (status === 0) {
+        showCanvasMessage('Can’t reach the application. Check that it is running.');
+    } else {
+        showCanvasMessage('The server returned an error (HTTP ' + status + ').');
+    }
 }
 
 function drawGraph(beanGraph) {
-    document.getElementById('details-panel').classList.add('hidden');
+    clearGraph();
 
-    nodesDataSet.clear();
-    edgesDataSet.clear();
+    const beans = [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])];
+    const edges = beanGraph.edges || [];
+    setStatus(plural(beans.length, 'bean', 'beans') + ', ' + plural(edges.length, 'link', 'links'));
 
-    if (!beanGraph) return;
-    const backendNodes = beanGraph.nodes || [];
-    const backendSoloNodes = beanGraph.soloNodes || [];
-    const backendEdges = beanGraph.edges || [];
-
-    const allBackendNodes = [...backendNodes, ...backendSoloNodes];
-
-    if (allBackendNodes.length === 0) {
-        console.warn("The graph is empty with current filters.");
+    if (beans.length === 0) {
+        showCanvasMessage('No beans match these filters. Try turning off “Only application beans” or clearing the package.');
         return;
     }
 
-    const visNodes = allBackendNodes.map(node => {
-        const colors = STEREOTYPE_COLORS[node.stereotype] || STEREOTYPE_COLORS['UNKNOWN'];
+    hideCanvasMessage();
+    nodesDataSet.add(beans.map(toVisNode));
+    edgesDataSet.add(edges.map(toVisEdge));
 
-        return {
-            id: node.id,
-            label: node.id,
-            title: node.fullClassName,
-            shape: 'box',
-            color: {
-                background: node.isSystem ? '#E0E0E0' : colors.background,
-                border: node.isSystem ? '#9E9E9E' : colors.border,
-                highlight: { background: '#BBDEFB', border: '#2196F3' }
-            },
-            font: { color: '#333' },
-            borderWidth: node.isSystem ? 1 : 2,
-            meta: node
-        };
-    });
+    // Раскладку для нового набора бинов считаем явно: при добавлении данных vis-network
+    // сам её не запускает и не вписывает граф в экран
+    network.setOptions({ physics: { enabled: true } });
+    network.stabilize(250);
+}
 
-    const visEdges = backendEdges.map(edge => {
+function clearGraph() {
+    clearSelection();
+    nodesDataSet.clear();
+    edgesDataSet.clear();
+}
+
+function toVisNode(bean) {
+    const style = bean.isSystem ? FRAMEWORK_STYLE : (STEREOTYPES[bean.stereotype] || STEREOTYPES.UNKNOWN);
+
+    return {
+        id: bean.id,
+        label: bean.id,
+        title: bean.fullClassName,
+        color: {
+            background: style.fill,
+            border: style.border,
+            highlight: { background: style.fill, border: INK },
+            hover: { background: style.fill, border: INK }
+        },
+        font: { color: style.text, size: bean.isSystem ? 12 : 13 },
+        borderWidth: bean.isSystem ? 1 : 1.5,
+        borderWidthSelected: 2.5,
+        // Служебные бины Spring и библиотек обведены пунктиром
+        shapeProperties: { borderRadius: 4, borderDashes: bean.isSystem ? [4, 3] : false },
+        meta: bean
+    };
+}
+
+function toVisEdge(edge) {
+    const injection = isInjection(edge);
+    const baseColor = { color: injection ? EDGE_COLOR : SERVICE_EDGE_COLOR, highlight: INK, hover: INK };
+
+    return {
+        from: edge.source.id,
+        to: edge.target.id,
+        label: linkLabel(edge),
+        color: baseColor,
+        baseColor,
         // Служебные связи (DECLARED_IN, DEPENDS_ON) рисуются пунктиром
-        // и подписываются видом связи, внедрения — сплошной линией и способом внедрения
-        const isInjection = !edge.kind || edge.kind === 'INJECTION';
-        return {
-            from: edge.source.id,
-            to: edge.target.id,
-            label: isInjection ? edge.injectionType : edge.kind,
-            arrows: 'to',
-            font: { size: 11, align: 'top', color: '#555' },
-            color: { color: '#BDBDBD', highlight: '#2196F3' },
-            dashes: !isInjection
-        };
-    });
-
-    nodesDataSet.add(visNodes);
-    edgesDataSet.add(visEdges);
+        dashes: injection ? false : [5, 4]
+    };
 }
 
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
+function isInjection(edge) {
+    return !edge.kind || edge.kind === 'INJECTION';
 }
 
-function showNodeDetails(meta) {
-    const panel = document.getElementById('details-panel');
-    const infoDiv = document.getElementById('node-info');
+function linkLabel(edge) {
+    return isInjection(edge)
+        ? (LINK_LABELS[edge.injectionType] || '')
+        : (LINK_LABELS[edge.kind] || edge.kind);
+}
 
-    const scopeClass = meta.scope === 'SINGLETON' ? 'singleton' : 'prototype';
-    const typeClass = meta.isSystem ? 'system' : 'user';
-    const typeText = meta.isSystem ? 'System (Spring)' : 'User';
+// Выбор бина и подсветка его соседей
 
-    const outgoingEdges = edgesDataSet.get({
-        filter: function (edge) {
-            return edge.from === meta.id;
-        }
-    });
+function selectBean(id, { focus = true } = {}) {
+    const node = nodesDataSet.get(id);
+    if (!node) return;
 
-    let dependenciesHtml = '';
-    if (outgoingEdges.length > 0) {
-        dependenciesHtml = '<ul class="dependencies-list">';
-        outgoingEdges.forEach(edge => {
-            dependenciesHtml += `<li><strong style="color: #0d6efd;">${escapeHtml(edge.to)}</strong> <span style="color: #777; font-size: 0.8rem;">(${escapeHtml(edge.label)})</span></li>`;
+    selectedId = id;
+    network.selectNodes([id]);
+    highlightNeighbourhood(id);
+    showNodeDetails(node.meta);
+
+    if (focus) {
+        network.focus(id, {
+            scale: Math.max(network.getScale(), 1),
+            animation: reduceMotion ? false : { duration: 600, easingFunction: 'easeInOutQuad' }
         });
-        dependenciesHtml += '</ul>';
+    }
+}
+
+function highlightNeighbourhood(id) {
+    const nearNodes = new Set([id, ...network.getConnectedNodes(id)]);
+    const nearEdges = new Set(network.getConnectedEdges(id));
+
+    nodesDataSet.update(nodesDataSet.getIds().map(nodeId => ({
+        id: nodeId,
+        opacity: nearNodes.has(nodeId) ? 1 : 0.2
+    })));
+    edgesDataSet.update(edgesDataSet.get().map(edge => {
+        const near = nearEdges.has(edge.id);
+        return {
+            id: edge.id,
+            color: { ...edge.baseColor, opacity: near ? 1 : 0.15 },
+            font: { color: near ? INK : 'rgba(91, 104, 119, 0.15)' }
+        };
+    }));
+}
+
+function resetHighlight() {
+    nodesDataSet.update(nodesDataSet.getIds().map(id => ({ id, opacity: 1 })));
+    edgesDataSet.update(edgesDataSet.get().map(edge => ({
+        id: edge.id,
+        color: { ...edge.baseColor, opacity: 1 },
+        font: { color: LABEL_COLOR }
+    })));
+}
+
+function clearSelection() {
+    if (selectedId === null) return;
+    selectedId = null;
+    resetHighlight();
+    closeDetailsPanel();
+}
+
+function closeDetails() {
+    network.unselectAll();
+    clearSelection();
+}
+
+// Панель деталей. Все значения из графа вставляются через textContent, поэтому HTML в них не выполняется
+
+function showNodeDetails(bean) {
+    const info = byId('node-info');
+    info.replaceChildren(
+        el('h2', 'bean-id', bean.id),
+        classLine(bean.fullClassName),
+        chips(bean),
+        linkSection('Uses', edgesDataSet.get({ filter: edge => edge.from === bean.id }), edge => edge.to,
+            'Doesn’t use other beans in this view.'),
+        linkSection('Used by', edgesDataSet.get({ filter: edge => edge.to === bean.id }), edge => edge.from,
+            'No bean in this view uses it.')
+    );
+
+    const panel = byId('details-panel');
+    panel.classList.add('is-open');
+    panel.setAttribute('aria-hidden', 'false');
+    panel.inert = false;
+    panel.scrollTop = 0;
+}
+
+function closeDetailsPanel() {
+    const panel = byId('details-panel');
+    panel.classList.remove('is-open');
+    panel.setAttribute('aria-hidden', 'true');
+    panel.inert = true;
+}
+
+// Пакет приглушён, простое имя класса выделено. Переносы строк — только после точек
+function classLine(fullClassName) {
+    const line = el('p', 'bean-class');
+    const name = fullClassName || 'Unknown class';
+    const dot = name.lastIndexOf('.');
+    if (dot > 0) {
+        name.slice(0, dot + 1).split(/(?<=\.)/).forEach(part => line.append(part, document.createElement('wbr')));
+        line.append(el('strong', null, name.slice(dot + 1)));
     } else {
-        dependenciesHtml = '<span style="color: #888; font-style: italic;">No dependencies</span>';
+        line.append(el('strong', null, name));
+    }
+    return line;
+}
+
+function chips(bean) {
+    const container = el('div', 'chips');
+
+    const stereotype = el('span', 'chip', (STEREOTYPES[bean.stereotype] || STEREOTYPES.UNKNOWN).name);
+    if (!bean.isSystem && STEREOTYPES[bean.stereotype] && bean.stereotype !== 'UNKNOWN') {
+        stereotype.dataset.stereotype = bean.stereotype;
     }
 
-    infoDiv.innerHTML = `
-        <div class="meta-row">
-            <span class="meta-label">Component ID:</span>
-            <span class="meta-value">${escapeHtml(meta.id)}</span>
-        </div>
-        <div class="meta-row">
-            <span class="meta-label">Java Class:</span>
-            <span class="meta-value" style="font-size: 0.8rem;">${escapeHtml(meta.fullClassName)}</span>
-        </div>
-        <div class="meta-row">
-            <span class="meta-label">Stereotype:</span>
-            <span class="tag" style="background: #e2e3e5;">@${escapeHtml(meta.stereotype)}</span>
-        </div>
-        <div class="meta-row">
-            <span class="meta-label">Characteristics:</span>
-            <span class="tag ${scopeClass}">${escapeHtml(meta.scope)}</span>
-            <span class="tag ${typeClass}">${typeText}</span>
-        </div>
-        <div class="meta-row" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
-            <span class="meta-label">Depends on:</span>
-            ${dependenciesHtml}
-        </div>
-    `;
+    const scopeNames = { SINGLETON: 'Singleton', PROTOTYPE: 'Prototype' };
+    container.append(
+        stereotype,
+        el('span', 'chip', scopeNames[bean.scope] || 'Unknown scope'),
+        el('span', 'chip', bean.isSystem ? 'Framework or library bean' : 'Application bean')
+    );
+    return container;
+}
 
-    panel.classList.remove('hidden');
+function linkSection(title, edges, otherEnd, emptyText) {
+    const section = el('section', 'links');
+    const heading = el('h3', null, title);
+    heading.append(el('span', null, String(edges.length)));
+    section.append(heading);
+
+    if (edges.length === 0) {
+        section.append(el('p', 'no-links', emptyText));
+        return section;
+    }
+
+    const list = el('ul', 'link-list');
+    edges
+        .sort((a, b) => otherEnd(a).localeCompare(otherEnd(b)))
+        .forEach(edge => {
+            const button = el('button');
+            button.type = 'button';
+            button.append(el('span', 'link-name', otherEnd(edge)), el('span', 'link-kind', edge.label));
+            button.addEventListener('click', () => selectBean(otherEnd(edge)));
+
+            const item = el('li');
+            item.append(button);
+            list.append(item);
+        });
+    section.append(list);
+    return section;
+}
+
+// Поиск: сначала точное совпадение имени, потом имена, которые начинаются с запроса, потом содержащие его
+
+function findBean(event) {
+    event.preventDefault();
+    const message = byId('searchMessage');
+    const query = byId('searchInput').value.trim();
+    if (!query) {
+        message.textContent = '';
+        return;
+    }
+
+    const lower = query.toLowerCase();
+    const ids = nodesDataSet.getIds();
+    const matches = ids.filter(id => id.toLowerCase() === lower)
+        .concat(ids.filter(id => id.toLowerCase() !== lower && id.toLowerCase().startsWith(lower)))
+        .concat(ids.filter(id => !id.toLowerCase().startsWith(lower) && id.toLowerCase().includes(lower)));
+
+    if (matches.length === 0) {
+        message.textContent = 'No bean matching “' + query + '” in this view.';
+        return;
+    }
+
+    message.textContent = matches.length > 1 ? matches.length + ' matches, showing ' + matches[0] + '.' : '';
+    selectBean(matches[0]);
 }
 
 function bindEvents() {
-    document.getElementById('applyFiltersBtn').addEventListener('click', () => {
-        loadGraphData();
+    byId('searchForm').addEventListener('submit', findBean);
+
+    // Фильтры применяются сразу; поле пакета — после паузы в наборе
+    ['filterSystem', 'filterSolo', 'filterScope', 'filterStereotype'].forEach(id =>
+        byId(id).addEventListener('change', loadGraphData));
+
+    let packageTimer = null;
+    byId('filterPackage').addEventListener('input', () => {
+        clearTimeout(packageTimer);
+        packageTimer = setTimeout(loadGraphData, 400);
     });
 
-    document.getElementById('searchBtn').addEventListener('click', () => {
-        const query = document.getElementById('searchInput').value.trim();
-        if (!query) return;
+    byId('fitBtn').addEventListener('click', fitGraph);
 
-        const foundNode = nodesDataSet.get({
-            filter: function (item) {
-                return item.id.toLowerCase().includes(query.toLowerCase());
-            }
-        });
-
-        if (foundNode.length > 0) {
-            const nodeId = foundNode[0].id;
-            network.selectNodes([nodeId]);
-            network.focus(nodeId, {
-                scale: 1.2,
-                animation: { duration: 1000, easingFunction: 'easeInOutQuad' }
-            });
-            showNodeDetails(foundNode[0].meta);
-        } else {
-            alert('Bean with this name was not found in the current graph!');
+    byId('detailsClose').addEventListener('click', closeDetails);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && selectedId !== null) {
+            closeDetails();
         }
     });
+}
 
-    document.getElementById('searchInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') document.getElementById('searchBtn').click();
-    });
+// Мелкие помощники
+
+function el(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+}
+
+function plural(count, one, many) {
+    return count + ' ' + (count === 1 ? one : many);
+}
+
+function fitGraph() {
+    network.fit({ animation: reduceMotion ? false : { duration: 500, easingFunction: 'easeInOutQuad' } });
+}
+
+function setStatus(text) {
+    byId('graphStatus').textContent = text;
+}
+
+// Сообщение показывается вместо графа, поэтому кнопка «Fit graph» в это время не нужна
+function showCanvasMessage(text) {
+    const message = byId('canvasMessage');
+    message.textContent = text;
+    message.hidden = false;
+    byId('fitBtn').hidden = true;
+}
+
+function hideCanvasMessage() {
+    byId('canvasMessage').hidden = true;
+    byId('fitBtn').hidden = false;
 }
