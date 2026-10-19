@@ -39,7 +39,7 @@ public final class TestGraphs {
     }
 
     public TestGraphs edge(String from, String to) {
-        edges.add(new BeanEdge(declared(from), declared(to), InjectionType.CONSTRUCTOR));
+        edges.add(BeanEdge.injection(declared(from), declared(to), InjectionType.CONSTRUCTOR));
         return this;
     }
 

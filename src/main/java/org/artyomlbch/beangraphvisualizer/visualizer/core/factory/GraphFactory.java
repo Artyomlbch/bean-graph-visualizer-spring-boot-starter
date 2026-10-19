@@ -1,6 +1,7 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.factory;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadataRepository;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.resolver.EdgeResolver;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.*;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -12,16 +13,17 @@ import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 
-import java.lang.reflect.*;
 import java.util.*;
 
 public class GraphFactory {
 
     private final BeanMetadataRepository beanRepository;
+    private final EdgeResolver edgeResolver;
     private final List<String> userPackages;
 
     public GraphFactory(BeanMetadataRepository beanRepository, ApplicationContext context) {
         this.beanRepository = beanRepository;
+        this.edgeResolver = new EdgeResolver(beanRepository);
         this.userPackages = AutoConfigurationPackages.has(context)
                 ? AutoConfigurationPackages.get(context)
                 : List.of();
@@ -41,7 +43,6 @@ public class GraphFactory {
             if (dependencies.length == 0) continue;
 
             BeanNode currentNode = nodeCache.get(beanName);
-            Class<?> beanClass = beanRepository.getBeanClass(beanName);
             for (String depName : dependencies) {
                 if (beanName.equals(depName)) continue;
 
@@ -50,9 +51,7 @@ public class GraphFactory {
                 BeanNode depNode = nodeCache.get(depName);
                 if (depNode == null) continue;
 
-                Class<?> depClass = beanRepository.getBeanClass(depName);
-                InjectionType type = determineInjectionType(beanClass, depClass, beanRepository);
-                edges.add(new BeanEdge(currentNode, depNode, type));
+                edges.add(edgeResolver.createEdge(currentNode, depNode));
             }
         }
 
@@ -116,40 +115,5 @@ public class GraphFactory {
                 .anyMatch(pkg -> pkg.isEmpty()
                         || className.startsWith(pkg + ".")
                 );
-    }
-
-    private InjectionType determineInjectionType(Class<?> beanClass, Class<?> depClass, BeanMetadataRepository beanRepository) {
-        try {
-            if (beanClass == null || depClass == null) return InjectionType.UNKNOWN;
-
-            for (Constructor<?> constructor : beanClass.getDeclaredConstructors()) {
-                if (isMatch(constructor.getGenericParameterTypes(), depClass)) return InjectionType.CONSTRUCTOR;
-            }
-
-            for (Method method : beanClass.getDeclaredMethods()) {
-                if (method.getName().startsWith("set") && method.getParameterCount() == 1) {
-                    if (isMatch(method.getGenericParameterTypes(), depClass)) {
-                        return InjectionType.SETTER;
-                    }
-                }
-            }
-
-            for (Field field : beanClass.getDeclaredFields()) {
-                if (isMatch(new Type[]{field.getGenericType()}, depClass)) return InjectionType.FIELD;
-            }
-        } catch (Exception ignored) {}
-        return InjectionType.UNKNOWN;
-    }
-
-    private boolean isMatch(Type[] types, Class<?> targetClass) {
-        for (Type type : types) {
-            if (type instanceof Class<?> clazz && clazz.isAssignableFrom(targetClass)) return true;
-            if (type instanceof ParameterizedType pt) {
-                for (Type arg : pt.getActualTypeArguments()) {
-                    if (arg instanceof Class<?> clazz && clazz.isAssignableFrom(targetClass)) return true;
-                }
-            }
-        }
-        return false;
     }
 }

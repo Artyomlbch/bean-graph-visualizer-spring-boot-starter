@@ -38,7 +38,7 @@ class BeanGraphTest {
     void duplicateBeansAndEdgesAreMerged() {
         BeanNode a = user("a");
         BeanNode b = user("b");
-        BeanEdge ab = new BeanEdge(a, b, InjectionType.CONSTRUCTOR);
+        BeanEdge ab = BeanEdge.injection(a, b, InjectionType.CONSTRUCTOR);
 
         BeanGraph graph = BeanGraph.of(List.of(a, b, a), List.of(ab, ab));
 
@@ -49,7 +49,7 @@ class BeanGraphTest {
     @Test
     void edgesToMissingBeansAreDropped() {
         BeanNode a = user("a");
-        BeanEdge toMissing = new BeanEdge(a, user("missing"), InjectionType.CONSTRUCTOR);
+        BeanEdge toMissing = BeanEdge.injection(a, user("missing"), InjectionType.CONSTRUCTOR);
 
         BeanGraph graph = BeanGraph.of(List.of(a), List.of(toMissing));
 

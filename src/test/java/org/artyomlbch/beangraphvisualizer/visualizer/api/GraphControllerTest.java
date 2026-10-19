@@ -49,7 +49,8 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.edges[0].source.id").exists())
                 .andExpect(jsonPath("$.edges[0].target.id").exists())
                 .andExpect(jsonPath("$.edges[0].kind").exists())
-                .andExpect(jsonPath("$.edges[0].injectionType").exists());
+                .andExpect(jsonPath("$.edges[?(@.kind != 'INJECTION')].injectionType", everyItem(nullValue())))
+                .andExpect(jsonPath("$.edges[?(@.kind == 'INJECTION')].injectionType").isNotEmpty());
     }
 
     @Test

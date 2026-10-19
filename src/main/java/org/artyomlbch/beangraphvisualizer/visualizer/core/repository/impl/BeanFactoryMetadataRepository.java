@@ -5,10 +5,12 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.util.ClassUtils;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 public class BeanFactoryMetadataRepository implements BeanMetadataRepository, ApplicationContextAware {
@@ -51,6 +53,19 @@ public class BeanFactoryMetadataRepository implements BeanMetadataRepository, Ap
     @Override
     public BeanDefinition getBeanDefinition(String beanName) {
         return factory.getBeanDefinition(beanName);
+    }
+
+    // merged bean definition - это схлопнутое определение бина,
+    // в котором объединены настройки родительски и дочерних определений
+    // возвращает фабричный метод, которым создавался бин (обычно @Bean-метод)
+    @Override
+    public Method getFactoryMethod(String beanName) {
+        if (!factory.containsBeanDefinition(beanName)) {
+            return null;
+        }
+
+        BeanDefinition merged = factory.getMergedBeanDefinition(beanName);
+        return merged instanceof RootBeanDefinition root ? root.getResolvedFactoryMethod() : null;
     }
 
     @Override
