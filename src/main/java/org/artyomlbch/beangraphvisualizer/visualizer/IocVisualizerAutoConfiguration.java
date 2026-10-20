@@ -13,6 +13,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.JsonSe
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.XmlSerializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
+import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -21,7 +22,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -90,4 +90,8 @@ public class IocVisualizerAutoConfiguration {
         return new GraphController(serializerService, graphService);
     }
 
+    @Bean
+    IocVisualizerUiConfigurer iocVisualizerUiConfigurer() {
+        return new IocVisualizerUiConfigurer();
+    }
 }

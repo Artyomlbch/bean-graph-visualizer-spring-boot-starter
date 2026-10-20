@@ -6,6 +6,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphReposi
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.JsonSerializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.XmlSerializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -22,6 +23,7 @@ public class IocVisualizerAutoConfigurationTest {
     void isDisableByDefault() {
         webRunner.run(context -> assertThat(context)
                 .doesNotHaveBean(GraphController.class)
+                .doesNotHaveBean(IocVisualizerUiConfigurer.class)
         );
     }
 
@@ -30,6 +32,7 @@ public class IocVisualizerAutoConfigurationTest {
         webRunner.withPropertyValues("ioc-visualizer.enabled=true")
                 .run(context -> assertThat(context)
                         .hasSingleBean(GraphController.class)
+                        .hasSingleBean(IocVisualizerUiConfigurer.class)
                 );
     }
 

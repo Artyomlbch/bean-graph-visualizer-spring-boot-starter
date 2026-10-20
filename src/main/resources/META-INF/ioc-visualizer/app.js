@@ -1,4 +1,4 @@
-const API_URL = '/api/ioc-visualizer/graph';
+const API_URL = '../api/ioc-visualizer/graph';
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
