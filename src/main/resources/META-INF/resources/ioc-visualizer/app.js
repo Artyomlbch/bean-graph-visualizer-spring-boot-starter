@@ -37,6 +37,9 @@ const edgesDataSet = new vis.DataSet();
 let network = null;
 let selectedId = null;
 let requestCounter = 0;
+// Какое направление связей показано в панели деталей. Запоминается при переходе к другому бину,
+// чтобы можно было идти по цепочке зависимостей в одну сторону
+let linkDirection = 'dependencies';
 
 const byId = (id) => document.getElementById(id);
 
@@ -197,7 +200,7 @@ function drawGraph(beanGraph) {
     setStatus(plural(beans.length, 'bean', 'beans') + ', ' + plural(edges.length, 'link', 'links'));
 
     if (beans.length === 0) {
-        showCanvasMessage('No beans match these filters. Try turning off “Only application beans” or clearing the package.');
+        showCanvasMessage('No beans match these filters.');
         return;
     }
 
@@ -330,10 +333,7 @@ function showNodeDetails(bean) {
         el('h2', 'bean-id', bean.id),
         classLine(bean.fullClassName),
         chips(bean),
-        linkSection('Uses', edgesDataSet.get({ filter: edge => edge.from === bean.id }), edge => edge.to,
-            'Doesn’t use other beans in this view.'),
-        linkSection('Used by', edgesDataSet.get({ filter: edge => edge.to === bean.id }), edge => edge.from,
-            'No bean in this view uses it.')
+        linkSection(bean)
     );
 
     const panel = byId('details-panel');
@@ -381,32 +381,75 @@ function chips(bean) {
     return container;
 }
 
-function linkSection(title, edges, otherEnd, emptyText) {
-    const section = el('section', 'links');
-    const heading = el('h3', null, title);
-    heading.append(el('span', null, String(edges.length)));
-    section.append(heading);
+// Связи бина: переключатель направления и список выбранного направления
+function linkSection(bean) {
+    const directions = [
+        {
+            key: 'dependencies',
+            title: 'Depends on',
+            edges: edgesDataSet.get({ filter: edge => edge.from === bean.id }),
+            otherEnd: edge => edge.to,
+            empty: 'Doesn’t depend on other beans in this view.'
+        },
+        {
+            key: 'dependents',
+            title: 'Used by',
+            edges: edgesDataSet.get({ filter: edge => edge.to === bean.id }),
+            otherEnd: edge => edge.from,
+            empty: 'No bean in this view depends on it.'
+        }
+    ];
 
-    if (edges.length === 0) {
-        section.append(el('p', 'no-links', emptyText));
-        return section;
+    const section = el('section', 'links');
+    const switcher = el('div', 'link-switch');
+    switcher.setAttribute('role', 'group');
+    switcher.setAttribute('aria-label', 'Direction of links');
+    const content = el('div');
+
+    const buttons = directions.map(direction => {
+        const button = el('button', 'link-switch-option', direction.title);
+        button.type = 'button';
+        button.append(el('span', 'link-count', String(direction.edges.length)));
+        button.addEventListener('click', () => {
+            linkDirection = direction.key;
+            render();
+        });
+        return button;
+    });
+
+    function render() {
+        directions.forEach((direction, index) =>
+            buttons[index].setAttribute('aria-pressed', String(direction.key === linkDirection)));
+        const current = directions.find(direction => direction.key === linkDirection);
+        content.replaceChildren(linkList(current));
+    }
+
+    switcher.append(...buttons);
+    section.append(switcher, content);
+    render();
+    return section;
+}
+
+function linkList(direction) {
+    if (direction.edges.length === 0) {
+        return el('p', 'no-links', direction.empty);
     }
 
     const list = el('ul', 'link-list');
-    edges
-        .sort((a, b) => otherEnd(a).localeCompare(otherEnd(b)))
+    direction.edges
+        .sort((a, b) => direction.otherEnd(a).localeCompare(direction.otherEnd(b)))
         .forEach(edge => {
+            const name = direction.otherEnd(edge);
             const button = el('button');
             button.type = 'button';
-            button.append(el('span', 'link-name', otherEnd(edge)), el('span', 'link-kind', edge.label));
-            button.addEventListener('click', () => selectBean(otherEnd(edge)));
+            button.append(el('span', 'link-name', name), el('span', 'link-kind', edge.label));
+            button.addEventListener('click', () => selectBean(name));
 
             const item = el('li');
             item.append(button);
             list.append(item);
         });
-    section.append(list);
-    return section;
+    return list;
 }
 
 // Поиск: сначала точное совпадение имени, потом имена, которые начинаются с запроса, потом содержащие его
