@@ -57,4 +57,11 @@ class UiResourcesTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("'../api/ioc-visualizer/graph'")));
     }
+
+    @Test
+    void uiFilesAreRevalidatedByBrowser() throws Exception {
+        mvc.perform(get("/ioc-visualizer/app.js"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-cache"));
+    }
 }
