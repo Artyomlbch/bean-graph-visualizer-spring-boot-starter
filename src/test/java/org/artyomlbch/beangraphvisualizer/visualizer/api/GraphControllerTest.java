@@ -138,6 +138,7 @@ class GraphControllerTest {
     void unknownFormatIsBadRequest() throws Exception {
         mvc.perform(post(GRAPH_URL).param("format", "yaml"))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().string(containsString("yaml")));
+                .andExpect(content().string(containsString("yaml")))
+                .andExpect(content().string(containsString("Available formats: [json, xml]")));
     }
 }
