@@ -36,7 +36,7 @@ public class IocVisualizerAutoConfigurationTest {
     @Test
     void isNotActiveInNonWebApplication() {
         new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IocVisualizerAutoConfigurationTest.class))
+                .withConfiguration(AutoConfigurations.of(IocVisualizerAutoConfiguration.class))
                 .withPropertyValues("ioc-visualizer.enabled=true")
                 .run(context -> assertThat(context)
                         .doesNotHaveBean(GraphController.class)
