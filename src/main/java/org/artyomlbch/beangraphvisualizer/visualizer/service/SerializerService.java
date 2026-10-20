@@ -2,6 +2,7 @@ package org.artyomlbch.beangraphvisualizer.visualizer.service;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 import java.util.Map;
@@ -22,11 +23,19 @@ public class SerializerService {
     }
 
     public String serialize(BeanGraph beanGraph, String format) {
+        return find(format).serialize(beanGraph);
+    }
+
+    public MediaType mediaType(String format) {
+        return find(format).mediaType();
+    }
+
+    private Serializer find(String format) {
         Serializer serializer = serializers.get(format.toLowerCase());
         if (serializer == null) {
             throw new IllegalArgumentException(
                     "Unsupported format: " + format + ". Available formats: " + serializers.keySet());
         }
-        return serializer.serialize(beanGraph);
+        return serializer;
     }
 }

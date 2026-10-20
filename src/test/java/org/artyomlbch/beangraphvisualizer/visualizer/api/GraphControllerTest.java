@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -18,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GraphControllerTest {
 
     private static final String GRAPH_URL = "/api/ioc-visualizer/graph";
+    private static final String TEST_APP_PACKAGE = "org.artyomlbch.beangraphvisualizer.testapp.layered";
 
     @Autowired
     private WebApplicationContext context;
@@ -31,8 +33,9 @@ class GraphControllerTest {
 
     @Test
     void returnsGraphAsJsonByDefault() throws Exception {
-        mvc.perform(post(GRAPH_URL))
+        mvc.perform(get(GRAPH_URL))
                 .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.nodes").isArray())
                 .andExpect(jsonPath("$.soloNodes").isArray())
                 .andExpect(jsonPath("$.edges").isArray());
@@ -40,7 +43,7 @@ class GraphControllerTest {
 
     @Test
     void jsonContainsFieldsUsedByUi() throws Exception {
-        mvc.perform(post(GRAPH_URL))
+        mvc.perform(get(GRAPH_URL))
                 .andExpect(jsonPath("$.nodes[0].id").exists())
                 .andExpect(jsonPath("$.nodes[0].fullClassName").exists())
                 .andExpect(jsonPath("$.nodes[0].scope").exists())
@@ -55,18 +58,22 @@ class GraphControllerTest {
 
     @Test
     void returnsXmlWhenRequested() throws Exception {
-        mvc.perform(post(GRAPH_URL).param("format", "xml"))
+        mvc.perform(get(GRAPH_URL).param("format", "xml"))
                 .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(startsWith("<")));
+    }
+    
+    @Test
+    void jsonIsLabeledAsJsonEvenForBrowser() throws Exception {
+        mvc.perform(get(GRAPH_URL).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
     }
 
     @Test
     void typeFilterKeepsOnlyUserBeans() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"filters": [{"type": "TYPE", "value": "USER"}]}
-                                """))
+        mvc.perform(get(GRAPH_URL).param("type", "USER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nodes[*].id", hasItem("orderController")))
                 .andExpect(jsonPath("$.nodes[*].isSystem", everyItem(is(false))))
@@ -75,68 +82,53 @@ class GraphControllerTest {
 
     @Test
     void doesNotAllowRequestsFromOtherSites() throws Exception {
-        mvc.perform(post(GRAPH_URL).header("Origin", "https://some.example"))
+        mvc.perform(get(GRAPH_URL).header("Origin", "https://some.example"))
                 .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 
     @Test
     void hidingSoloBeansKeepsEdges() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"filters": [
-                            {"type": "TYPE", "value": "USER"},
-                            {"type": "DETAIL_LEVEL", "value": "CONNECTED_ONLY"}
-                        ]}
-                        """))
+        mvc.perform(get(GRAPH_URL)
+                        .param("type", "USER")
+                        .param("detailLevel", "CONNECTED_ONLY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.soloNodes").isEmpty())
                 .andExpect(jsonPath("$.edges[*].target.id", hasItem("orderRepository")));
     }
 
     @Test
-    void emptyRequestObjectIsAccepted() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void filterWithoutTypeIsBadRequest() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"filters": [{"value": "USER"}]}
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().string(containsString("type is required")));
+    void packagePrefixKeepsBeansFromPackage() throws Exception {
+        mvc.perform(get(GRAPH_URL).param("packagePrefix", TEST_APP_PACKAGE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes[*].id", hasItem("orderController")))
+                .andExpect(jsonPath("$.nodes[*].fullClassName", everyItem(startsWith(TEST_APP_PACKAGE))))
+                .andExpect(jsonPath("$.soloNodes[*].fullClassName", everyItem(startsWith(TEST_APP_PACKAGE))));
     }
 
     @Test
     void wrongFilterValueIsBadRequest() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"filters": [{"type": "SCOPE", "value": "EVERYTHING"}]}
-                                """))
+        mvc.perform(get(GRAPH_URL).param("scope", "EVERYTHING"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(containsString("SINGLETON_ONLY")));
     }
 
+    // Неизвестные параметры (например, опечатка в имени) просто не учитываются
     @Test
-    void unknownFilterTypeIsBadRequest() throws Exception {
-        mvc.perform(post(GRAPH_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"filters": [{"type": "COLOR", "value": "RED"}]}
-                                """))
-                .andExpect(status().isBadRequest());
+    void unknownParameterIsIgnored() throws Exception {
+        mvc.perform(get(GRAPH_URL).param("color", "RED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes").isNotEmpty());
+    }
+
+    @Test
+    void postIsNotAllowed() throws Exception {
+        mvc.perform(post(GRAPH_URL))
+                .andExpect(status().isMethodNotAllowed());
     }
 
     @Test
     void unknownFormatIsBadRequest() throws Exception {
-        mvc.perform(post(GRAPH_URL).param("format", "yaml"))
+        mvc.perform(get(GRAPH_URL).param("format", "yaml"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(containsString("yaml")))
                 .andExpect(content().string(containsString("Available formats: [json, xml]")));

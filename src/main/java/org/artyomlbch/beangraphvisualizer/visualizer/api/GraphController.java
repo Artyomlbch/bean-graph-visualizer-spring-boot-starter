@@ -19,13 +19,16 @@ public class GraphController {
         this.graphService = graphService;
     }
 
-    @PostMapping(value = "/api/ioc-visualizer/graph")
-    public String getGraph(
+    @GetMapping("/api/ioc-visualizer/graph")
+    public ResponseEntity<String> getGraph(
             @RequestParam(defaultValue = "json") String format,
-            @RequestBody(required = false) GraphRequestDto requestDto
+            @ModelAttribute GraphRequestDto request
     ) {
-        BeanGraph graph = graphService.getGraph(requestDto);
-        return serializerService.serialize(graph, format);
+        MediaType mediaType = serializerService.mediaType(format);
+        BeanGraph graph = graphService.getGraph(request);
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .body(serializerService.serialize(graph, format));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -35,3 +38,4 @@ public class GraphController {
                 .body(e.getMessage());
     }
 }
+

@@ -124,32 +124,34 @@ function drawGrid(ctx) {
 
 // Загрузка графа
 
-function buildRequest() {
-    const filters = [];
+// Адрес запроса графа: фильтры передаются параметрами, незаданные не передаются
+function buildGraphUrl() {
+    const params = new URLSearchParams();
 
     if (byId('filterSystem').checked) {
-        filters.push({ type: 'TYPE', value: 'USER' });
+        params.set('type', 'USER');
     }
     if (byId('filterSolo').checked) {
-        filters.push({ type: 'DETAIL_LEVEL', value: 'CONNECTED_ONLY' });
+        params.set('detailLevel', 'CONNECTED_ONLY');
     }
 
     const packagePrefix = byId('filterPackage').value.trim();
     if (packagePrefix) {
-        filters.push({ type: 'PACKAGE', value: packagePrefix });
+        params.set('packagePrefix', packagePrefix);
     }
 
     const scope = byId('filterScope').value;
     if (scope !== 'ALL') {
-        filters.push({ type: 'SCOPE', value: scope });
+        params.set('scope', scope);
     }
 
     const stereotype = byId('filterStereotype').value;
     if (stereotype !== 'ALL') {
-        filters.push({ type: 'STEREOTYPE', value: stereotype });
+        params.set('stereotype', stereotype);
     }
 
-    return { filters };
+    const query = params.toString();
+    return query ? API_URL + '?' + query : API_URL;
 }
 
 async function loadGraphData() {
@@ -158,11 +160,7 @@ async function loadGraphData() {
     setStatus('Loading graph…');
 
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(buildRequest())
-        });
+        const response = await fetch(buildGraphUrl());
         if (requestNumber !== requestCounter) return;
 
         if (!response.ok) {

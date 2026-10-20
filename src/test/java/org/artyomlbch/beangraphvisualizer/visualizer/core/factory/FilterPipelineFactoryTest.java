@@ -1,15 +1,13 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.factory;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.FilterDto;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.FilterName;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.GraphRequestDto;
+import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.allNodes;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.GraphLookup.ids;
+import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.bean;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.graph;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.system;
 import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.user;
@@ -20,8 +18,6 @@ class FilterPipelineFactoryTest {
 
     private final FilterPipelineFactory factory = new FilterPipelineFactory();
 
-    // userBean связан только с системным бином
-    // other и otherdep между собой
     private final BeanGraph graph = graph()
             .with(user("userBean"), system("springBean"), user("other"), user("otherDep"))
             .edge("userBean", "springBean")
@@ -35,53 +31,59 @@ class FilterPipelineFactoryTest {
 
     @Test
     void requestWithoutFiltersKeepsGraph() {
-        assertThat(factory.newInstance(new GraphRequestDto()).process(graph)).isSameAs(graph);
-    }
-
-    @Test
-    void blankValueIsSkipped() {
-        GraphRequestDto request = request(new FilterDto("  ", FilterName.TYPE));
+        GraphRequestDto request = new GraphRequestDto(null, null, null, null, null);
 
         assertThat(factory.newInstance(request).process(graph)).isSameAs(graph);
     }
 
     @Test
-    void filterWithoutTypeIsRejected() {
-        GraphRequestDto request = request(new FilterDto("USER", null));
+    void blankValueIsSkipped() {
+        GraphRequestDto request = new GraphRequestDto("  ", "", null, null, null);
 
-        assertThatThrownBy(() -> factory.newInstance(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("type is required");
+        assertThat(factory.newInstance(request).process(graph)).isSameAs(graph);
     }
 
     @Test
     void wrongValueIsRejectedWithListOfAllowedValues() {
-        GraphRequestDto request = request(new FilterDto("EVERYTHING", FilterName.SCOPE));
+        GraphRequestDto request = new GraphRequestDto(null, null, "EVERYTHING", null, null);
 
         assertThatThrownBy(() -> factory.newInstance(request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("EVERYTHING")
+                .hasMessageContaining("scope")
                 .hasMessageContaining("SINGLETON_ONLY")
                 .hasMessageContaining("PROTOTYPE_ONLY");
     }
 
-    /**
-     * В запросе «скрыть одинокие» стоит раньше «только пользовательские».
-     * После удаления системных бинов userBean остаётся без связей,
-     * поэтому «скрыть одинокие» должно сработать уже после этого.
-     */
+    @Test
+    void valuesAreCaseInsensitive() {
+        GraphRequestDto request = new GraphRequestDto(" user ", null, null, null, null);
+
+        BeanGraph result = factory.newInstance(request).process(graph);
+
+        assertThat(ids(allNodes(result))).containsExactlyInAnyOrder("userBean", "other", "otherDep");
+    }
+
     @Test
     void detailLevelIsAppliedLast() {
-        GraphRequestDto request = request(
-                new FilterDto("CONNECTED_ONLY", FilterName.DETAIL_LEVEL),
-                new FilterDto("USER", FilterName.TYPE));
+        GraphRequestDto request = new GraphRequestDto("USER", null, null, null, "CONNECTED_ONLY");
 
         BeanGraph result = factory.newInstance(request).process(graph);
 
         assertThat(ids(allNodes(result))).containsExactly("other", "otherDep");
     }
 
-    private static GraphRequestDto request(FilterDto... filters) {
-        return new GraphRequestDto(List.of(filters));
+    @Test
+    void packageIsAppliedBeforeStereotype() {
+        BeanGraph layered = graph()
+                .with(bean("orderController", "com.example.web.OrderController", Stereotype.CONTROLLER),
+                        bean("orderService", "com.example.core.OrderService", Stereotype.SERVICE))
+                .edge("orderController", "orderService")
+                .build();
+        GraphRequestDto request = new GraphRequestDto(null, "com.example.core", null, "CONTROLLER", null);
+
+        BeanGraph result = factory.newInstance(request).process(layered);
+
+        assertThat(allNodes(result)).isEmpty();
     }
 }
