@@ -29,6 +29,10 @@
     --other: #67768A;
     --framework: #A4AFBB;
     --framework-fill: #F4F6F8;
+    /* Найденный цикл. Этот цвет больше нигде не используется */
+    --cycle: #C8322A;
+    --cycle-fill: #FBEAE8;
+    --cycle-text: #8A1F19;
 
     --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     --font-code: "Cascadia Mono", "JetBrains Mono", Consolas, "SFMono-Regular", Menlo, monospace;
@@ -243,6 +247,139 @@ select:focus-visible {
 .toggle input:focus-visible + .toggle-track {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+}
+
+/* Анализ: поиск циклов */
+
+.analysis {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.analysis h2 {
+    margin-bottom: 0;
+}
+
+.secondary-button {
+    align-self: flex-start;
+    height: 32px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.secondary-button:hover {
+    border-color: var(--faint);
+}
+
+.secondary-button:disabled {
+    color: var(--faint);
+    cursor: default;
+}
+
+.cycle-group + .cycle-group {
+    margin-top: 12px;
+}
+
+.cycle-group h3 {
+    display: flex;
+    gap: 6px;
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.cycle-total {
+    font-weight: 400;
+    color: var(--faint);
+}
+
+.cycle-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--rule);
+}
+
+.cycle-list > li {
+    border-bottom: 1px solid var(--rule);
+}
+
+.cycle-links {
+    margin: 0 0 6px;
+    padding: 0 0 0 14px;
+    list-style: none;
+}
+
+.cycle-button {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 4px;
+    font: inherit;
+    font-size: 13px;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+.cycle-links .cycle-button {
+    padding: 3px 4px;
+    color: var(--muted);
+}
+
+.cycle-button:hover {
+    background: var(--paper);
+}
+
+.cycle-button[aria-pressed="true"] {
+    color: var(--cycle-text);
+    background: var(--cycle-fill);
+}
+
+.cycle-button:focus-visible {
+    outline-offset: -2px;
+}
+
+.cycle-label {
+    font: 12.5px var(--font-code);
+    word-break: break-all;
+}
+
+.cycle-count {
+    display: flex;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.cycle-flag {
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--cycle-text);
+    border: 1px solid var(--cycle);
+    border-radius: 999px;
+}
+
+.cycle-note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.cycle-note[hidden] {
+    display: none;
 }
 
 /* Легенда */

@@ -55,7 +55,8 @@ class UiResourcesTest {
     void appScriptCallsApiByRelativeUrl() throws Exception {
         mvc.perform(get("/ioc-visualizer/app.js"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("'../api/ioc-visualizer/graph'")));
+                .andExpect(content().string(containsString("'../api/ioc-visualizer/graph'")))
+                .andExpect(content().string(containsString("'../api/ioc-visualizer/analysis/cycles'")));
     }
 
     @Test
