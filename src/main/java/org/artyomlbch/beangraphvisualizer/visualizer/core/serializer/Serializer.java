@@ -4,6 +4,6 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.springframework.http.MediaType;
 
 public interface Serializer {
-    String serialize(BeanGraph graph);
+    String serialize(Object graph);
     MediaType mediaType();
 }

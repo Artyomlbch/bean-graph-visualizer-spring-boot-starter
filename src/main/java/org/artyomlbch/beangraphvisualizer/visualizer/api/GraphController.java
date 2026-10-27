@@ -30,12 +30,5 @@ public class GraphController {
                 .contentType(mediaType)
                 .body(serializerService.serialize(graph, format));
     }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleBadRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest()
-                .contentType(MediaType.TEXT_PLAIN)
-                .body(e.getMessage());
-    }
 }
 

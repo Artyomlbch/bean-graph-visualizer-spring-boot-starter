@@ -12,7 +12,7 @@ public class XmlSerializer implements Serializer {
     private final XmlMapper xmlMapper = XmlMapper.builder().build();
 
     @Override
-    public String serialize(BeanGraph graph) {
+    public String serialize(Object graph) {
         return xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(graph);
     }
 

@@ -1,7 +1,6 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.service;
 
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.springframework.http.MediaType;
 
 import java.util.List;
@@ -22,8 +21,8 @@ public class SerializerService {
         }
     }
 
-    public String serialize(BeanGraph beanGraph, String format) {
-        return find(format).serialize(beanGraph);
+    public String serialize(Object value, String format) {
+        return find(format).serialize(value);
     }
 
     public MediaType mediaType(String format) {

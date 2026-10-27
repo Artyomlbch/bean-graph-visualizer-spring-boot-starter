@@ -43,6 +43,21 @@ public final class TestGraphs {
         return this;
     }
 
+    public TestGraphs injection(String from, String to, InjectionType type, String declaredType) {
+        edges.add(BeanEdge.injection(declared(from), declared(to), type, declaredType));
+        return this;
+    }
+
+    public TestGraphs declaredIn(String bean, String configuration) {
+        edges.add(BeanEdge.declaredIn(declared(bean), declared(configuration)));
+        return this;
+    }
+
+    public TestGraphs dependsOn(String bean, String dependency) {
+        edges.add(BeanEdge.dependsOn(declared(bean), declared(dependency)));
+        return this;
+    }
+
     public BeanGraph build() {
         return BeanGraph.of(nodes.values(), edges);
     }

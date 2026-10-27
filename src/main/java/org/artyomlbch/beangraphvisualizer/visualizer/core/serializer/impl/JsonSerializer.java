@@ -11,7 +11,7 @@ public class JsonSerializer implements Serializer {
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     @Override
-    public String serialize(BeanGraph graph) {
+    public String serialize(Object graph) {
         try {
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(graph);
         } catch (Exception e) {

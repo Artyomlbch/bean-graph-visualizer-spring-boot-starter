@@ -1,6 +1,9 @@
 package org.artyomlbch.beangraphvisualizer.visualizer;
 
+import org.artyomlbch.beangraphvisualizer.visualizer.api.AnalysisController;
+import org.artyomlbch.beangraphvisualizer.visualizer.api.ApiExceptionHandler;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.FilterPipelineFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.GraphFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.initializer.GraphInitializer;
@@ -11,6 +14,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.impl.InMemo
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.Serializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.JsonSerializer;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.XmlSerializer;
+import org.artyomlbch.beangraphvisualizer.visualizer.service.AnalysisService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
 import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
@@ -88,6 +92,28 @@ public class IocVisualizerAutoConfiguration {
     GraphController iocVisualizerGraphController(SerializerService serializerService,
                                                  GraphService graphService) {
         return new GraphController(serializerService, graphService);
+    }
+
+    @Bean
+    CycleAnalyzer iocVisualizerCycleAnalyzer() {
+        return new CycleAnalyzer();
+    }
+
+    @Bean
+    AnalysisService iocVisualizerAnalysisService(GraphRepository graphRepository,
+                                                 CycleAnalyzer cycleAnalyzer) {
+        return new AnalysisService(graphRepository, cycleAnalyzer);
+    }
+
+    @Bean
+    AnalysisController iocVisualizerAnalysisController(AnalysisService analysisService,
+                                                       SerializerService serializerService) {
+        return new AnalysisController(analysisService, serializerService);
+    }
+
+    @Bean
+    ApiExceptionHandler iocVisualizerApiExceptionHandler() {
+        return new ApiExceptionHandler();
     }
 
     @Bean
