@@ -5,6 +5,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.EdgeKind;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -34,6 +35,7 @@ import java.util.Optional;
  *     <li>зависимость указана в @DependsOn → DEPENDS_ON;</li>
  *     <li>иначе → INJECTION со способом UNKNOWN.</li>
  * </ol>
+ * Для найденной точки внедрения запоминается и тип, написанный в коде (declaredType ребра).
  */
 public class EdgeResolver {
 
@@ -57,6 +59,12 @@ public class EdgeResolver {
             "jakarta.annotation.Resource"
     );
 
+    // найденная точка внедрения
+    // способ внедрения и тип, написанный в коде
+    record InjectionPoint(InjectionType type, @Nullable String declaredType) {
+        static final InjectionPoint NOT_FOUND = new InjectionPoint(InjectionType.UNKNOWN, null);
+    }
+
     private final BeanMetadataRepository repository;
 
     public EdgeResolver(BeanMetadataRepository repository) {
@@ -72,9 +80,9 @@ public class EdgeResolver {
             return BeanEdge.declaredIn(bean, dependency);
         }
 
-        InjectionType injectionType = findInjectionPointSafely(bean.id(), definition, dependency.id());
-        if (injectionType != InjectionType.UNKNOWN) {
-            return BeanEdge.injection(bean, dependency, injectionType);
+        InjectionPoint point = findInjectionPointSafely(bean.id(), definition, dependency.id());
+        if (point.type() != InjectionType.UNKNOWN) {
+            return BeanEdge.injection(bean, dependency, point.type(), point.declaredType());
         }
 
         String[] dependsOn = definition.getDependsOn();
@@ -91,11 +99,11 @@ public class EdgeResolver {
      * getDeclaredMethods() бросает NoClassDefFoundError
      * в этом случае просто возвращается неопределенный тип внедрения
      */
-    private InjectionType findInjectionPointSafely(String beanName, BeanDefinition definition, String dependencyName) {
+    private InjectionPoint findInjectionPointSafely(String beanName, BeanDefinition definition, String dependencyName) {
         try {
             return findInjectionPoint(beanName, definition, dependencyName);
         } catch (RuntimeException | LinkageError e) {
-            return InjectionType.UNKNOWN;
+            return InjectionPoint.NOT_FOUND;
         }
     }
 
@@ -104,11 +112,11 @@ public class EdgeResolver {
      * при совпадении побеждает точка, найденная раньше в порядке
      * конструктор или @Bean-метод -> @Autowired-методы -> поля
      */
-    private InjectionType findInjectionPoint(String beanName, BeanDefinition definition, String dependencyName) {
+    private InjectionPoint findInjectionPoint(String beanName, BeanDefinition definition, String dependencyName) {
         Class<?> beanClass = repository.getBeanClass(beanName);
         Class<?> dependencyClass = repository.getBeanClass(dependencyName);
         if (beanClass == null || dependencyClass == null) {
-            return InjectionType.UNKNOWN;
+            return InjectionPoint.NOT_FOUND;
         }
 
         BestMatch best = new BestMatch();
@@ -119,20 +127,15 @@ public class EdgeResolver {
             if (factoryMethod != null) {
                 // перебор параметров и подбор наилучшего совпадения по типу
                 for (int i = 0; i < factoryMethod.getParameterCount(); i++) {
-                    best.offer(
-                            match(ResolvableType
-                                    .forMethodParameter(factoryMethod, i), dependencyClass),
-                            InjectionType.FACTORY_METHOD
-                    );
+                    best.offer(ResolvableType.forMethodParameter(factoryMethod, i), dependencyClass,
+                            InjectionType.FACTORY_METHOD);
                 }
             }
         } else {
             // перебираем конструкторы
             for (Constructor<?> constructor : injectionConstructors(beanClass)) {
                 for (int i = 0; i < constructor.getParameterCount(); i++) {
-                    best.offer(
-                            match(ResolvableType
-                                    .forConstructorParameter(constructor, i, beanClass), dependencyClass),
+                    best.offer(ResolvableType.forConstructorParameter(constructor, i, beanClass), dependencyClass,
                             InjectionType.CONSTRUCTOR);
                 }
             }
@@ -143,7 +146,7 @@ public class EdgeResolver {
         ReflectionUtils.doWithMethods(beanClass,
                 method -> {
                     for (int i = 0; i < method.getParameterCount(); i++) {
-                        best.offer(match(ResolvableType.forMethodParameter(method, i, beanClass), dependencyClass),
+                        best.offer(ResolvableType.forMethodParameter(method, i, beanClass), dependencyClass,
                                 InjectionType.SETTER);
                     }
                 },
@@ -151,11 +154,11 @@ public class EdgeResolver {
 
         // сканирование полей
         ReflectionUtils.doWithFields(beanClass,
-                field -> best.offer(match(ResolvableType.forField(field, beanClass), dependencyClass),
+                field -> best.offer(ResolvableType.forField(field, beanClass), dependencyClass,
                         InjectionType.FIELD),
                 field -> !Modifier.isStatic(field.getModifiers()) && isInjectionPoint(field));
 
-        return best.type;
+        return best.result();
     }
 
     // конструкторы, через которые могли быть внедрены зависимости
@@ -208,6 +211,17 @@ public class EdgeResolver {
         return Match.NONE;
     }
 
+    // класс из кода, через который пришла зависимость, сам тип точки внедрения
+    // или тип элемента, если точка внедрения является коллекцией
+    // массивом, Map, Optional или ObjectProvider
+    static @Nullable Class<?> matchedClass(ResolvableType declaredType, Match match) {
+        if (match == Match.ELEMENT) {
+            ResolvableType elementType = elementType(declaredType);
+            return (elementType != null) ? elementType.resolve() : null;
+        }
+        return declaredType.resolve();
+    }
+
     // тип элемента, если точка внедрения является коллекцией, Optional, Map или ObjectProvider
     private static ResolvableType elementType(ResolvableType type) {
         if (type.isArray()) {
@@ -234,13 +248,23 @@ public class EdgeResolver {
 
         private Match match = Match.NONE;
         private InjectionType type = InjectionType.UNKNOWN;
+        private @Nullable Class<?> declaredClass;
 
         // точка внедрения запоминается, если она лучше предыдущей (выше по перечислению в Match)
-        void offer(Match candidate, InjectionType candidateType) {
+        void offer(ResolvableType declaredType, Class<?> dependencyClass, InjectionType candidateType) {
+            Match candidate = match(declaredType, dependencyClass);
             if (candidate.compareTo(match) > 0) {
                 match = candidate;
                 type = candidateType;
+                declaredClass = matchedClass(declaredType, candidate);
             }
+        }
+
+        InjectionPoint result() {
+            if (match == Match.NONE) {
+                return InjectionPoint.NOT_FOUND;
+            }
+            return new InjectionPoint(type, declaredClass != null ? declaredClass.getName() : null);
         }
     }
 }

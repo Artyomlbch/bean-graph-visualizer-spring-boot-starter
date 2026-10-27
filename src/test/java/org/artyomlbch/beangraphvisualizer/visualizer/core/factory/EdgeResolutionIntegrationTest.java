@@ -20,6 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(classes = EdgesTestApplication.class, properties = "ioc-visualizer.enabled=true")
 class EdgeResolutionIntegrationTest {
 
+    // классы фикстуры package-private, поэтому тип сравнивается по имени
+    private static final String FIXTURES = "org.artyomlbch.beangraphvisualizer.testapp.edges.";
+
     @Autowired
     private GraphRepository graphRepository;
 
@@ -61,6 +64,7 @@ class EdgeResolutionIntegrationTest {
 
         assertThat(edge.kind()).isEqualTo(EdgeKind.DECLARED_IN);
         assertThat(edge.injectionType()).isNull();
+        assertThat(edge.declaredType()).isNull();
     }
 
     // Остальные случаи
@@ -76,6 +80,7 @@ class EdgeResolutionIntegrationTest {
 
         assertThat(edge.kind()).isEqualTo(EdgeKind.DEPENDS_ON);
         assertThat(edge.injectionType()).isNull();
+        assertThat(edge.declaredType()).isNull();
     }
 
     @Test
@@ -86,5 +91,29 @@ class EdgeResolutionIntegrationTest {
     @Test
     void autowiredMethodWithAnyNameIsDetected() {
         assertInjection("metricsConsumer", "metricsRegistry", InjectionType.SETTER);
+    }
+
+    // Тип, написанный в коде в точке внедрения
+
+    @Test
+    void declaredTypeOfExactFieldIsBeanClass() {
+        assertThat(edgeOf("reportService", "pdfExporter").declaredType()).isEqualTo(FIXTURES + "PdfExporter");
+    }
+
+    /** В конструкторе List<Exporter>: в коде ReportService зависит от интерфейса, а не от CsvExporter. */
+    @Test
+    void declaredTypeOfListIsElementType() {
+        assertThat(edgeOf("reportService", "csvExporter").declaredType()).isEqualTo(FIXTURES + "Exporter");
+    }
+
+    @Test
+    void declaredTypeOfWildcardListIsUpperBound() {
+        assertThat(edgeOf("notificationHub", "emailChannel").declaredType()).isEqualTo(FIXTURES + "Channel");
+    }
+
+    @Test
+    void declaredTypeOfBeanMethodParameterIsParameterType() {
+        assertThat(edgeOf("reportGenerator", "invoiceRepository").declaredType())
+                .isEqualTo(FIXTURES + "InvoiceRepository");
     }
 }

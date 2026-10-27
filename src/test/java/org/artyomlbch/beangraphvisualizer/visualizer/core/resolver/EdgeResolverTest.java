@@ -22,7 +22,7 @@ class EdgeResolverTest {
     static class PdfExporter implements Exporter {
     }
 
-    /** Поля разных типов, каждое сравнивается с классом PdfExporter. */
+    // Поля разных типов, каждое сравнивается с классом PdfExporter
     @SuppressWarnings("unused")
     static class InjectionPoints {
         PdfExporter exact;
@@ -38,6 +38,12 @@ class EdgeResolverTest {
     private static Match matchOf(String fieldName) throws NoSuchFieldException {
         ResolvableType fieldType = ResolvableType.forField(InjectionPoints.class.getDeclaredField(fieldName));
         return EdgeResolver.match(fieldType, PdfExporter.class);
+    }
+
+    // тип из кода, через который в поле приходит PdfExporter
+    private static Class<?> declaredClassOf(String fieldName) throws NoSuchFieldException {
+        ResolvableType fieldType = ResolvableType.forField(InjectionPoints.class.getDeclaredField(fieldName));
+        return EdgeResolver.matchedClass(fieldType, EdgeResolver.match(fieldType, PdfExporter.class));
     }
 
     // Сравнение типов
@@ -72,7 +78,7 @@ class EdgeResolverTest {
         assertThat(matchOf("optional")).isEqualTo(Match.ELEMENT);
     }
 
-    /** В Map<String, X> Spring кладёт бины как значения, а ключи — их имена. */
+    // В Map<String, X> Spring кладёт бины как значения, а ключи — их имена
     @Test
     void mapValueIsElement() throws Exception {
         assertThat(matchOf("map")).isEqualTo(Match.ELEMENT);
@@ -81,6 +87,28 @@ class EdgeResolverTest {
     @Test
     void unrelatedTypeDoesNotMatch() throws Exception {
         assertThat(matchOf("unrelated")).isEqualTo(Match.NONE);
+    }
+
+    // Тип, написанный в коде
+
+    @Test
+    void declaredClassOfExactFieldIsItsClass() throws Exception {
+        assertThat(declaredClassOf("exact")).isEqualTo(PdfExporter.class);
+    }
+
+    /** В коде интерфейс, хотя внедрена реализация: зависимость в коде — от интерфейса. */
+    @Test
+    void declaredClassOfInterfaceFieldIsInterface() throws Exception {
+        assertThat(declaredClassOf("byInterface")).isEqualTo(Exporter.class);
+    }
+
+    @Test
+    void declaredClassOfContainerIsElementType() throws Exception {
+        assertThat(declaredClassOf("list")).isEqualTo(Exporter.class);
+        assertThat(declaredClassOf("wildcardList")).isEqualTo(Exporter.class);
+        assertThat(declaredClassOf("array")).isEqualTo(Exporter.class);
+        assertThat(declaredClassOf("optional")).isEqualTo(PdfExporter.class);
+        assertThat(declaredClassOf("map")).isEqualTo(Exporter.class);
     }
 
     // Выбор конструктора

@@ -53,7 +53,9 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.edges[0].target.id").exists())
                 .andExpect(jsonPath("$.edges[0].kind").exists())
                 .andExpect(jsonPath("$.edges[?(@.kind != 'INJECTION')].injectionType", everyItem(nullValue())))
-                .andExpect(jsonPath("$.edges[?(@.kind == 'INJECTION')].injectionType").isNotEmpty());
+                .andExpect(jsonPath("$.edges[?(@.kind == 'INJECTION')].injectionType").isNotEmpty())
+                .andExpect(jsonPath("$.edges[?(@.kind != 'INJECTION')].declaredType", everyItem(nullValue())))
+                .andExpect(jsonPath("$.edges[?(@.injectionType == 'CONSTRUCTOR')].declaredType", everyItem(notNullValue())));
     }
 
     @Test
@@ -63,7 +65,7 @@ class GraphControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(startsWith("<")));
     }
-    
+
     @Test
     void jsonIsLabeledAsJsonEvenForBrowser() throws Exception {
         mvc.perform(get(GRAPH_URL).accept(MediaType.TEXT_HTML))

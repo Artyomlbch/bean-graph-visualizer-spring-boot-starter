@@ -12,7 +12,8 @@ public record BeanEdge(
         BeanNode source,
         BeanNode target,
         @Nullable InjectionType injectionType,
-        EdgeKind kind
+        EdgeKind kind,
+        @Nullable String declaredType
 ) {
 
     public BeanEdge {
@@ -22,17 +23,25 @@ public record BeanEdge(
         if (kind != EdgeKind.INJECTION && injectionType != null) {
             throw new IllegalArgumentException(kind + " edge cannot have an injection type");
         }
+        if (kind != EdgeKind.INJECTION && declaredType != null) {
+            throw new IllegalArgumentException(kind + " edge cannot have a declared type");
+        }
     }
 
     public static BeanEdge injection(BeanNode source, BeanNode target, InjectionType type) {
-        return new BeanEdge(source, target, type, EdgeKind.INJECTION);
+        return injection(source, target, type, null);
+    }
+
+    public static BeanEdge injection(BeanNode source, BeanNode target, InjectionType type,
+            @Nullable String declaredType) {
+        return new BeanEdge(source, target, type, EdgeKind.INJECTION, declaredType);
     }
 
     public static BeanEdge declaredIn(BeanNode bean, BeanNode configuration) {
-        return new BeanEdge(bean, configuration, null, EdgeKind.DECLARED_IN);
+        return new BeanEdge(bean, configuration, null, EdgeKind.DECLARED_IN, null);
     }
 
     public static BeanEdge dependsOn(BeanNode bean, BeanNode dependency) {
-        return new BeanEdge(bean, dependency, null, EdgeKind.DEPENDS_ON);
+        return new BeanEdge(bean, dependency, null, EdgeKind.DEPENDS_ON, null);
     }
 }
