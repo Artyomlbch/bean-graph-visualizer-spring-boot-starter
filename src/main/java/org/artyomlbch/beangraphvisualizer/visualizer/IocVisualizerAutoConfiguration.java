@@ -4,6 +4,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.api.AnalysisController;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.ApiExceptionHandler;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleResolver;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.FilterPipelineFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.GraphFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.initializer.GraphInitializer;
@@ -19,6 +20,7 @@ import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
 import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -95,8 +97,13 @@ public class IocVisualizerAutoConfiguration {
     }
 
     @Bean
-    CycleAnalyzer iocVisualizerCycleAnalyzer() {
-        return new CycleAnalyzer();
+    CycleAnalyzer iocVisualizerCycleAnalyzer(ApplicationContext context) {
+        // модули — подпакеты пакетов приложения, тех же, по которым GraphFactory
+        // отличает бины приложения от системных
+        List<String> applicationPackages = AutoConfigurationPackages.has(context)
+                ? AutoConfigurationPackages.get(context)
+                : List.of();
+        return new CycleAnalyzer(new ModuleResolver(applicationPackages));
     }
 
     @Bean
