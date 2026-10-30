@@ -5,7 +5,7 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-// раздает веб-интерфейс
+// отдает веб-интерфецс
 // файлы лежат в META-INF/ioc-visualizer/
 public class IocVisualizerUiConfigurer implements WebMvcConfigurer {
 

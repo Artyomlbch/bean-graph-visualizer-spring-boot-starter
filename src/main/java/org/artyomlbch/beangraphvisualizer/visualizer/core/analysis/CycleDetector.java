@@ -2,9 +2,9 @@ package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
 
 import java.util.*;
 
-// поиск циклов в ориентированном графе при помощи
+// поиск циклов в графе при помощи
 // алгоритма Тарьяна
-// T - тип вершины, например, имя бина или имя модуля
+// T - тип вершины
 public final class CycleDetector<T> {
 
     // граф, вершина - коллекция вершин, в которые из нее ведут ребра
@@ -55,6 +55,7 @@ public final class CycleDetector<T> {
             }
         }
 
+        // определение начала цикла и сбор нод цикла
         if (lowLink.get(vertex).equals(index.get(vertex))) {
             Set<T> component = new LinkedHashSet<>();
 

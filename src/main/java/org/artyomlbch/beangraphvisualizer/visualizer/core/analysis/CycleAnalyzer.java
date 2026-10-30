@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-// Ищет циклы между бинами и между модулями приложения
+// ищет циклы между бинами и между модулями приложения
 public class CycleAnalyzer {
 
     private static final Comparator<BeanCycle> LARGEST_BEAN_CYCLE_FIRST =
@@ -46,11 +46,6 @@ public class CycleAnalyzer {
         return new CycleReport(beanCycles(graph), moduleCycles(graph));
     }
 
-    /**
-     * Учитываются все виды рёбер: внедрение, @Bean-метод в конфигурации
-     * (Spring создаёт конфигурацию раньше бина) и @DependsOn.
-     * Все три задают порядок создания бинов
-     */
     List<BeanCycle> beanCycles(BeanGraph graph) {
         Map<String, Set<String>> dependencies = new LinkedHashMap<>();
         for (BeanEdge edge : graph.getEdges()) {
@@ -69,13 +64,6 @@ public class CycleAnalyzer {
         return cycles;
     }
 
-    /**
-     * Зависимость между модулями считается по коду: от модуля класса, в котором написана
-     * зависимость, к модулю типа из точки внедрения (declaredType ребра).
-     * Поэтому зависимость от интерфейса своего модуля не связывает модуль с модулем реализации.
-     * Учитываются только внедрения: @DependsOn и «объявлен в конфигурации» не являются
-     * зависимостью кода одного класса от другого
-     */
     List<ModuleCycle> moduleCycles(BeanGraph graph) {
         Map<String, BeanNode> declaringConfiguration = new HashMap<>();
         for (BeanEdge edge : graph.getEdges()) {
@@ -84,7 +72,7 @@ public class CycleAnalyzer {
             }
         }
 
-        // модуль → модуль → рёбра, из которых получилась зависимость
+        // модуль -> модуль -> рёбра, из которых получилась зависимость
         Map<String, Map<String, List<BeanEdge>>> links = new TreeMap<>();
         for (BeanEdge edge : graph.getEdges()) {
             if (edge.kind() != EdgeKind.INJECTION) {
@@ -122,7 +110,7 @@ public class CycleAnalyzer {
         return cycles;
     }
 
-    // Класс, в коде которого написана зависимость. Для параметра @Bean-метода
+    // класс, в коде которого написана зависимость. Для параметра @Bean-метода
     // это конфигурация, где объявлен метод, а не класс созданного бина
     private static BeanNode codeOwner(BeanEdge edge, Map<String, BeanNode> declaringConfiguration) {
         if (edge.injectionType() == InjectionType.FACTORY_METHOD) {

@@ -98,8 +98,6 @@ public class IocVisualizerAutoConfiguration {
 
     @Bean
     CycleAnalyzer iocVisualizerCycleAnalyzer(ApplicationContext context) {
-        // модули — подпакеты пакетов приложения, тех же, по которым GraphFactory
-        // отличает бины приложения от системных
         List<String> applicationPackages = AutoConfigurationPackages.has(context)
                 ? AutoConfigurationPackages.get(context)
                 : List.of();
