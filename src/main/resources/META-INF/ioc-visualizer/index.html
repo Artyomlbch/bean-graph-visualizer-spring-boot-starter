@@ -24,9 +24,10 @@
             <p class="search-message" id="searchMessage" role="status"></p>
         </div>
 
-        <section class="filters" aria-labelledby="filtersTitle">
-            <h2 id="filtersTitle">Show</h2>
+        <details class="filters collapsible" id="filtersPanel">
+            <summary><h2 id="filtersTitle">Filters</h2></summary>
 
+            <div class="panel-body">
             <label class="toggle">
                 <input type="checkbox" id="filterSystem" checked>
                 <span class="toggle-track" aria-hidden="true"></span>
@@ -63,14 +64,18 @@
                 </select>
                 <p class="hint" id="stereotypeHint">Beans of this stereotype and the beans they use.</p>
             </div>
-        </section>
+            </div>
+        </details>
 
-        <section class="analysis" aria-labelledby="analysisTitle">
-            <h2 id="analysisTitle">Analysis</h2>
-            <button type="button" class="secondary-button" id="findCyclesBtn">Find cycles</button>
-            <div id="cycleResults" aria-live="polite"></div>
-            <p class="cycle-note" id="cycleHiddenNote" hidden></p>
-        </section>
+        <details class="analysis collapsible" id="analysisPanel">
+            <summary><h2 id="analysisTitle">Analysis</h2></summary>
+
+            <div class="panel-body">
+                <button type="button" class="secondary-button" id="findCyclesBtn">Find cycles</button>
+                <div id="cycleResults" aria-live="polite"></div>
+                <p class="cycle-note" id="cycleHiddenNote" hidden></p>
+            </div>
+        </details>
 
         <section class="legend" aria-labelledby="legendTitle">
             <h2 id="legendTitle">Legend</h2>

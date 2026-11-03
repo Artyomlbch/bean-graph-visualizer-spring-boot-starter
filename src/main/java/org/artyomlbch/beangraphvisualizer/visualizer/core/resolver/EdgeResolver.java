@@ -23,20 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Определяет, что означает ребро «бин → зависимость».
- *
- * Spring записывает только сам факт зависимости, но не то, как она возникла.
- * Поэтому ответ восстанавливается по определению бина и по его классу:
- * <ol>
- *     <li>зависимость — конфигурация, в которой объявлен @Bean-метод бина → DECLARED_IN;</li>
- *     <li>среди точек внедрения бина (конструктор, @Bean-метод, методы и поля
- *     с @Autowired) есть подходящая → INJECTION с её способом;</li>
- *     <li>зависимость указана в @DependsOn → DEPENDS_ON;</li>
- *     <li>иначе → INJECTION со способом UNKNOWN.</li>
- * </ol>
- * Для найденной точки внедрения запоминается и тип, написанный в коде (declaredType ребра).
- */
 public class EdgeResolver {
 
     // насколько тип точки внедрения подходит зависимости
@@ -52,7 +38,7 @@ public class EdgeResolver {
         EXACT
     }
 
-    // аннотации, явно указывающие внедрение зависимости
+    // аннотации, указывающие внедрение зависимости
     private static final List<String> INJECTION_ANNOTATIONS = List.of(
             Autowired.class.getName(),
             "jakarta.inject.Inject",
@@ -93,12 +79,11 @@ public class EdgeResolver {
         return BeanEdge.injection(bean, dependency, InjectionType.UNKNOWN);
     }
 
-    /**
-     * рефлексия может выбросить ошибку, если в сигнатурах методов класса упоминается класс
-     * из библиотеки, которой нет в приложении.
-     * getDeclaredMethods() бросает NoClassDefFoundError
-     * в этом случае просто возвращается неопределенный тип внедрения
-     */
+
+    // рефлексия может выбросить ошибку, если в сигнатурах методов класса упоминается класс
+    // из библиотеки, которой нет в приложении
+    // getDeclaredMethods() бросает NoClassDefFoundError
+    // в этом случае просто возвращается неопределенный тип внедрения
     private InjectionPoint findInjectionPointSafely(String beanName, BeanDefinition definition, String dependencyName) {
         try {
             return findInjectionPoint(beanName, definition, dependencyName);
@@ -107,11 +92,10 @@ public class EdgeResolver {
         }
     }
 
-    /**
-     * перебирает все точки внедрения бина и выбирает ту, которая подходит лучше всего
-     * при совпадении побеждает точка, найденная раньше в порядке
-     * конструктор или @Bean-метод -> @Autowired-методы -> поля
-     */
+
+    // перебирает все точки внедрения бина и выбирает ту, которая подходит лучше всего
+    // при совпадении побеждает точка, найденная раньше в порядке
+    // конструктор или @Bean-метод -> @Autowired-методы -> поля
     private InjectionPoint findInjectionPoint(String beanName, BeanDefinition definition, String dependencyName) {
         Class<?> beanClass = repository.getBeanClass(beanName);
         Class<?> dependencyClass = repository.getBeanClass(dependencyName);
@@ -150,13 +134,15 @@ public class EdgeResolver {
                                 InjectionType.SETTER);
                     }
                 },
-                method -> !method.isBridge() && !Modifier.isStatic(method.getModifiers()) && isInjectionPoint(method));
+                method -> !method.isBridge() && !Modifier.isStatic(method.getModifiers()) && isInjectionPoint(method)
+        );
 
         // сканирование полей
         ReflectionUtils.doWithFields(beanClass,
                 field -> best.offer(ResolvableType.forField(field, beanClass), dependencyClass,
                         InjectionType.FIELD),
-                field -> !Modifier.isStatic(field.getModifiers()) && isInjectionPoint(field));
+                field -> !Modifier.isStatic(field.getModifiers()) && isInjectionPoint(field)
+        );
 
         return best.result();
     }

@@ -124,6 +124,17 @@ select {
     border-radius: 6px;
 }
 
+/* Список: родную стрелку браузер прижимает к самому краю, поэтому рисуем свою с нормальным отступом справа */
+select {
+    appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 L6 6.5 L11 1.5' fill='none' stroke='%235B6877' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 8px;
+    cursor: pointer;
+}
+
 input::placeholder {
     color: var(--faint);
 }
@@ -167,14 +178,57 @@ select:focus-visible {
     display: none;
 }
 
-.filters {
+/* Сворачиваемые панели («Filters», «Analysis»): по умолчанию свёрнуты, раскрываются по клику на заголовок */
+
+.collapsible > summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+
+.collapsible > summary::after {
+    content: "";
+    flex: none;
+    width: 7px;
+    height: 7px;
+    margin-right: 4px;
+    border-right: 1.6px solid var(--muted);
+    border-bottom: 1.6px solid var(--muted);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.15s;
+}
+
+.collapsible[open] > summary::after {
+    transform: translateY(1px) rotate(-135deg);
+}
+
+.collapsible > summary:hover h2 {
+    color: var(--ink);
+}
+
+.collapsible > summary h2 {
+    margin: 0;
+}
+
+.collapsible > summary:focus-visible {
+    outline-offset: 4px;
+    border-radius: 4px;
+}
+
+.panel-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-}
-
-.filters h2 {
-    margin-bottom: 0;
+    padding-top: 12px;
 }
 
 .field {
@@ -251,14 +305,8 @@ select:focus-visible {
 
 /* Анализ: поиск циклов */
 
-.analysis {
-    display: flex;
-    flex-direction: column;
+.analysis .panel-body {
     gap: 10px;
-}
-
-.analysis h2 {
-    margin-bottom: 0;
 }
 
 .secondary-button {
