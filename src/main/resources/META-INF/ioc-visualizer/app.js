@@ -64,9 +64,9 @@ function initNetwork() {
                 gravitationalConstant: -150,
                 centralGravity: 0.01,
                 springLength: 130,
-                springConstant: 0.08
+                springConstant: 0.08,
             },
-            stabilization: { iterations: 250 }
+            stabilization: { iterations: 500 }
         },
         layout: { improvedLayout: true },
         interaction: { hover: true, tooltipDelay: 300 },
