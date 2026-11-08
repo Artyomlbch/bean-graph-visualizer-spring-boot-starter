@@ -47,6 +47,10 @@ let linkDirection = 'dependencies';
 // Подсвеченный цикл: ключ кнопки в списке циклов и что подсвечивать
 let activeCycleKey = null;
 const cycleTargets = new Map();
+// Строка статуса с размером графа, возвращается после индикатора раскладки
+let graphSummary = '';
+// Граф хотя бы раз загружен: до этого метки видимости циклов не считаются
+let graphLoaded = false;
 
 const byId = (id) => document.getElementById(id);
 
@@ -54,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initNetwork();
     bindEvents();
     loadGraphData();
+    loadCycles();
 });
 
 function initNetwork() {
@@ -65,10 +70,13 @@ function initNetwork() {
                 centralGravity: 0.01,
                 springLength: 130,
                 springConstant: 0.08,
+                // Узлы — широкие прямоугольники, а не точки: без этого подписи налезают друг на друга
+                avoidOverlap: 1
             },
-            stabilization: { iterations: 500 }
+            stabilization: { iterations: 250, updateInterval: 25 }
         },
-        layout: { improvedLayout: true },
+        // Одинаковая раскладка при каждой загрузке одного и того же графа
+        layout: { improvedLayout: true, randomSeed: 42 },
         interaction: { hover: true, tooltipDelay: 300 },
         nodes: {
             shape: 'box',
@@ -91,11 +99,15 @@ function initNetwork() {
 
     network.on('beforeDrawing', drawGrid);
 
+    network.on('stabilizationProgress', ({ iterations, total }) => {
+        setStatus('Laying out the graph… ' + Math.round(iterations / total * 100) + '%');
+    });
     // Когда раскладка готова, физика выключается: граф перестаёт «плыть», пока его разглядывают.
     // Перетаскивать узлы по-прежнему можно
     network.on('stabilizationIterationsDone', () => {
         network.setOptions({ physics: { enabled: false } });
         network.fit();
+        setStatus(graphSummary);
     });
     network.on('selectNode', (params) => selectBean(params.nodes[0], { focus: false }));
     network.on('deselectNode', (params) => {
@@ -137,8 +149,9 @@ function drawGrid(ctx) {
 
 // Загрузка графа
 
-// Адрес запроса графа: фильтры передаются параметрами, незаданные не передаются
-function buildGraphUrl() {
+// Адрес запроса графа: фильтры передаются параметрами, незаданные не передаются.
+// withPackage: false — без фильтра пакета, по такому графу строится индекс подсказок пакетов
+function buildGraphUrl({ withPackage = true } = {}) {
     const params = new URLSearchParams();
 
     if (byId('filterSystem').checked) {
@@ -148,7 +161,7 @@ function buildGraphUrl() {
         params.set('detailLevel', 'CONNECTED_ONLY');
     }
 
-    const packagePrefix = byId('filterPackage').value.trim();
+    const packagePrefix = withPackage ? byId('filterPackage').value.trim() : '';
     if (packagePrefix) {
         params.set('packagePrefix', packagePrefix);
     }
@@ -180,7 +193,9 @@ async function loadGraphData() {
             showLoadError(response.status, await response.text());
             return;
         }
-        drawGraph(await response.json());
+        const beanGraph = await response.json();
+        drawGraph(beanGraph);
+        updatePackageIndex(beanGraph);
     } catch (error) {
         if (requestNumber === requestCounter) {
             showLoadError(0, '');
@@ -208,16 +223,20 @@ function drawGraph(beanGraph) {
 
     const beans = [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])];
     const edges = beanGraph.edges || [];
-    setStatus(plural(beans.length, 'bean', 'beans') + ', ' + plural(edges.length, 'link', 'links'));
+    graphSummary = plural(beans.length, 'bean', 'beans') + ', ' + plural(edges.length, 'link', 'links');
+    setStatus(graphSummary);
 
+    graphLoaded = true;
     if (beans.length === 0) {
         showCanvasMessage('No beans match these filters.');
+        updateCycleVisibility();
         return;
     }
 
     hideCanvasMessage();
     nodesDataSet.add(beans.map(toVisNode));
     edgesDataSet.add(edges.map(toVisEdge));
+    updateCycleVisibility();
 
     // Цикл, выбранный до смены фильтров, остаётся подсвеченным в новом наборе бинов
     if (activeCycleKey !== null) {
@@ -232,6 +251,7 @@ function drawGraph(beanGraph) {
 
 function clearGraph() {
     clearSelection();
+    resetCompletion();
     nodesDataSet.clear();
     edgesDataSet.clear();
 }
@@ -266,6 +286,8 @@ function toVisEdge(edge) {
         from: edge.source.id,
         to: edge.target.id,
         label: linkLabel(edge),
+        kind: edge.kind || 'INJECTION',
+        hidden: !injection && !showServiceLinks(),
         color: baseColor,
         baseColor,
         // тип из кода в точке внедрения; показывается в панели, если отличается от класса бина
@@ -274,6 +296,26 @@ function toVisEdge(edge) {
         // Служебные связи (DECLARED_IN, DEPENDS_ON) рисуются пунктиром
         dashes: injection ? false : [5, 4]
     };
+}
+
+// Служебные связи можно спрятать переключателем. Скрытое ребро в vis-network всё равно участвует
+// в раскладке, поэтому бины остаются рядом со своей конфигурацией
+function showServiceLinks() {
+    return byId('filterServiceLinks').checked;
+}
+
+function isHiddenByDefault(edge) {
+    return edge.kind !== 'INJECTION' && !showServiceLinks();
+}
+
+function toggleServiceLinks() {
+    if (activeCycleKey !== null) {
+        applyActiveCycle({ fit: false });
+    } else if (selectedId !== null) {
+        highlightNeighbourhood(selectedId);
+    } else {
+        resetHighlight();
+    }
 }
 
 function isInjection(edge) {
@@ -326,6 +368,8 @@ function highlight(nodeIds, edgeIds, edgeColor = null) {
                 ? { color: edgeColor, highlight: edgeColor, hover: edgeColor, opacity: 1 }
                 : { ...edge.baseColor, opacity: near ? 1 : 0.15 },
             width: recolor ? 2.4 : EDGE_WIDTH,
+            // Подсвеченные рёбра видны, даже если это скрытые служебные связи
+            hidden: !near && isHiddenByDefault(edge),
             font: { color: near ? INK : 'rgba(91, 104, 119, 0.15)' }
         };
     }));
@@ -337,6 +381,7 @@ function resetHighlight() {
         id: edge.id,
         color: { ...edge.baseColor, opacity: 1 },
         width: EDGE_WIDTH,
+        hidden: isHiddenByDefault(edge),
         font: { color: LABEL_COLOR }
     })));
 }
@@ -489,12 +534,12 @@ function linkList(direction) {
 }
 
 // Циклы. Ищутся по полному графу, а подсвечиваются в текущем: часть бинов цикла
-// может быть скрыта фильтрами, об этом пишется под списком
+// может быть скрыта фильтрами, об этом пишется под списком.
+// Граф на сервере строится один раз при старте и от фильтров не зависит, поэтому циклы
+// загружаются один раз при открытии страницы, а не при каждой смене фильтров
 
-async function findCycles() {
-    const button = byId('findCyclesBtn');
+async function loadCycles() {
     const results = byId('cycleResults');
-    button.disabled = true;
     results.replaceChildren(el('p', 'cycle-note', 'Looking for cycles…'));
 
     try {
@@ -503,12 +548,20 @@ async function findCycles() {
             results.replaceChildren(el('p', 'cycle-note', 'Cycles not loaded: the server returned HTTP ' + response.status + '.'));
             return;
         }
-        renderCycles(await response.json());
+        const report = await response.json();
+        renderCycles(report);
+        showCycleBadge((report.moduleCycles || []).length + (report.beanCycles || []).length);
     } catch (error) {
         results.replaceChildren(el('p', 'cycle-note', 'Can’t reach the application. Check that it is running.'));
-    } finally {
-        button.disabled = false;
     }
+}
+
+// Сколько циклов найдено, в заголовке панели. Красный, если циклы есть
+function showCycleBadge(count) {
+    const badge = byId('cycleBadge');
+    badge.textContent = count > 0 ? plural(count, 'cycle', 'cycles') : 'No cycles';
+    badge.toggleAttribute('data-found', count > 0);
+    badge.hidden = false;
 }
 
 function renderCycles(report) {
@@ -534,6 +587,7 @@ function renderCycles(report) {
         parts.push(cycleGroup('Between beans', beanCycles.map(beanCycleItem)));
     }
     results.replaceChildren(...parts);
+    updateCycleVisibility();
 }
 
 function cycleGroup(title, items) {
@@ -551,7 +605,7 @@ function moduleCycleItem(cycle, index) {
     const item = el('li');
     const allEdges = cycle.links.flatMap(link => link.edges);
     item.append(cycleButton('module-' + index, joinCycle(cycle.modules.map(shortModule)),
-        cycleTarget(allEdges), cycle.modules.join('\n')));
+        cycleTarget(allEdges), cycle.modules.join('\n'), { showVisibility: true }));
 
     const links = el('ul', 'cycle-links');
     cycle.links.forEach((link, linkIndex) => {
@@ -578,7 +632,8 @@ function beanCycleItem(cycle, index) {
     const shown = cycle.beans.slice(0, 3);
     const rest = cycle.beans.length - shown.length;
     const label = joinCycle(shown) + (rest > 0 ? ' and ' + rest + ' more' : '');
-    item.append(cycleButton('bean-' + index, label, cycleTarget(cycle.edges, cycle.beans), cycle.beans.join('\n')));
+    item.append(cycleButton('bean-' + index, label, cycleTarget(cycle.edges, cycle.beans), cycle.beans.join('\n'),
+        { showVisibility: true }));
     return item;
 }
 
@@ -603,15 +658,38 @@ function cycleTarget(edges, beans = []) {
     };
 }
 
-function cycleButton(key, label, target, title) {
+// showVisibility — показывать у кнопки, сколько бинов цикла видно при текущих фильтрах.
+// Нужно только у самих циклов: у связей внутри модульного цикла справа уже стоит число рёбер
+function cycleButton(key, label, target, title, { showVisibility = false } = {}) {
     const button = el('button', 'cycle-button');
     button.type = 'button';
     button.title = title;
     button.setAttribute('aria-pressed', 'false');
     button.append(el('span', 'cycle-label', label));
+    let visibility = null;
+    if (showVisibility) {
+        visibility = el('span', 'cycle-visibility');
+        visibility.hidden = true;
+        button.append(visibility);
+    }
     button.addEventListener('click', () => toggleCycle(key));
-    cycleTargets.set(key, { target, button });
+    cycleTargets.set(key, { target, button, visibility });
     return button;
+}
+
+// Циклы ищутся по полному графу, а показываются в отфильтрованном. Метка в списке заранее
+// говорит, что часть бинов цикла (или все) скрыта фильтрами. Обновляется после каждой загрузки графа
+function updateCycleVisibility() {
+    // пока граф ни разу не загружен, бинов в виде нет, и все циклы выглядели бы скрытыми
+    if (!graphLoaded) return;
+    cycleTargets.forEach(({ target, button, visibility }) => {
+        if (!visibility) return;
+        const total = target.nodes.length;
+        const shown = target.nodes.filter(id => nodesDataSet.get(id) !== null).length;
+        visibility.textContent = shown === 0 ? 'hidden by filters' : shown + ' of ' + total + ' shown';
+        visibility.hidden = shown === total;
+        button.classList.toggle('is-filtered-out', shown === 0);
+    });
 }
 
 function toggleCycle(key) {
@@ -637,13 +715,6 @@ function applyActiveCycle({ fit }) {
         .map(edge => edge.id));
     highlight(new Set(visible), edgeIds, CYCLE_COLOR);
 
-    const hidden = nodes.length - visible.length;
-    const note = byId('cycleHiddenNote');
-    note.textContent = hidden > 0
-        ? plural(hidden, 'bean', 'beans') + ' of this cycle ' + (hidden === 1 ? 'is' : 'are') + ' hidden by the filters.'
-        : '';
-    note.hidden = hidden === 0;
-
     if (fit && visible.length > 0) {
         network.fit({ nodes: visible, animation: reduceMotion ? false : { duration: 500, easingFunction: 'easeInOutQuad' } });
     }
@@ -654,7 +725,6 @@ function deactivateCycle() {
     if (activeCycleKey === null) return;
     activeCycleKey = null;
     cycleTargets.forEach(({ button }) => button.setAttribute('aria-pressed', 'false'));
-    byId('cycleHiddenNote').hidden = true;
 }
 
 function clearCycleHighlight() {
@@ -663,10 +733,55 @@ function clearCycleHighlight() {
     resetHighlight();
 }
 
-// Поиск: сначала точное совпадение имени, потом имена, которые начинаются с запроса, потом содержащие его
+// Поиск. Бин ищется по полному имени (id) и по короткому: у бинов Spring имя часто полное
+// имя класса, и набирать удобнее JdbcClientAutoConfiguration, чем org.springframework…
+// Порядок: точное совпадение, потом начинается с запроса, потом содержит его.
+// Внутри группы сначала бины приложения, потом более короткие имена, потом по алфавиту
+
+const MATCH_EXACT = 0;
+const MATCH_PREFIX = 1;
+const MATCH_CONTAINS = 2;
+
+// Найденные бины по порядку. text — та форма имени (id или подпись), которая совпала с запросом,
+// её же подставляет автодополнение
+function rankMatches(query, { prefixOnly = false } = {}) {
+    const lower = query.toLowerCase();
+    if (!lower) return [];
+
+    const matches = [];
+    nodesDataSet.forEach(node => {
+        let best = null;
+        for (const text of new Set([node.id, shortBeanName(node.id)])) {
+            const name = text.toLowerCase();
+            const level = name === lower ? MATCH_EXACT
+                : name.startsWith(lower) ? MATCH_PREFIX
+                : name.includes(lower) ? MATCH_CONTAINS
+                : null;
+            if (level === null || (prefixOnly && level === MATCH_CONTAINS)) continue;
+            // из двух форм имени берём более точное совпадение, при равенстве — более короткое
+            if (best === null || level < best.level || (level === best.level && text.length < best.text.length)) {
+                best = { id: node.id, text, level, isSystem: Boolean(node.meta.isSystem) };
+            }
+        }
+        if (best !== null) matches.push(best);
+    });
+
+    return matches.sort((a, b) =>
+        a.level - b.level
+        || Number(a.isSystem) - Number(b.isSystem)
+        || a.text.length - b.text.length
+        || a.text.localeCompare(b.text));
+}
+
+// org.example.FooAutoConfiguration → FooAutoConfiguration,
+// spring.web-org.springframework…WebProperties → WebProperties, orderService → orderService
+function shortBeanName(id) {
+    return id.slice(id.lastIndexOf('.') + 1) || id;
+}
 
 function findBean(event) {
     event.preventDefault();
+    hideSearchGhost();
     const message = byId('searchMessage');
     const query = byId('searchInput').value.trim();
     if (!query) {
@@ -674,36 +789,373 @@ function findBean(event) {
         return;
     }
 
-    const lower = query.toLowerCase();
-    const ids = nodesDataSet.getIds();
-    const matches = ids.filter(id => id.toLowerCase() === lower)
-        .concat(ids.filter(id => id.toLowerCase() !== lower && id.toLowerCase().startsWith(lower)))
-        .concat(ids.filter(id => !id.toLowerCase().startsWith(lower) && id.toLowerCase().includes(lower)));
-
+    const matches = rankMatches(query);
     if (matches.length === 0) {
         message.textContent = 'No bean matching “' + query + '” in this view.';
         return;
     }
 
-    message.textContent = matches.length > 1 ? matches.length + ' matches, showing ' + matches[0] + '.' : '';
-    selectBean(matches[0]);
+    message.textContent = matches.length > 1 ? matches.length + ' matches, showing ' + matches[0].id + '.' : '';
+    selectBean(matches[0].id);
+}
+
+// Автодополнение: серый хвост первого подходящего имени, Tab принимает его,
+// следующие Tab перебирают остальные варианты, Shift+Tab идёт назад.
+// Подсказываются только имена, которые начинаются с набранного: иначе хвост нельзя дописать к тексту
+//
+// completion хранит варианты для текста, который человек набрал сам:
+// query — этот текст, matches — варианты, index — какой показан,
+// accepted — вариант уже подставлен в поле, и Tab переключает на следующий
+let completion = null;
+
+function onSearchInput(event) {
+    byId('searchMessage').textContent = '';
+    if (event.isComposing) return;
+    const query = byId('searchInput').value;
+    completion = { query, matches: rankMatches(query, { prefixOnly: true }), index: 0, accepted: false };
+    renderSearchGhost();
+}
+
+function onSearchKeydown(event) {
+    const input = byId('searchInput');
+
+    if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        if (!completion || completion.matches.length === 0) return;
+        const current = completion.matches[completion.index];
+        const hasTail = !completion.accepted && current.text.length > completion.query.length;
+        // Нечего дописывать и не из чего выбирать — Tab работает как обычно и переводит фокус
+        if (!hasTail && completion.matches.length === 1) return;
+        if (event.shiftKey && !completion.accepted) return;
+
+        event.preventDefault();
+        if (completion.accepted || !hasTail) {
+            const step = event.shiftKey ? -1 : 1;
+            const count = completion.matches.length;
+            completion.index = (completion.index + step + count) % count;
+        }
+        acceptCompletion();
+        return;
+    }
+
+    // Стрелка вправо в конце строки принимает подсказку, как в браузерах и терминалах
+    if (event.key === 'ArrowRight' && !byId('searchGhost').hidden && isCaretAtEnd(input)) {
+        event.preventDefault();
+        acceptCompletion();
+        return;
+    }
+
+    // Esc сначала убирает подсказку, и только следующий Esc закрывает панель или снимает подсветку
+    // preventDefault нужен, потому что поле type="search" по Esc само стирает весь текст
+    if (event.key === 'Escape' && !byId('searchGhost').hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        // подсказка отклонена: не вернётся при фокусе, а Tab снова переводит фокус
+        resetCompletion();
+    }
+}
+
+function acceptCompletion() {
+    const input = byId('searchInput');
+    const match = completion.matches[completion.index];
+    // Присваивание value не вызывает событие input, поэтому набранный запрос и варианты сохраняются
+    input.value = match.text;
+    input.setSelectionRange(match.text.length, match.text.length);
+    completion.accepted = true;
+    hideSearchGhost();
+
+    const count = completion.matches.length;
+    byId('searchMessage').textContent = count > 1
+        ? (completion.index + 1) + ' of ' + count + ' · Tab for next, Shift+Tab for previous'
+        : '';
+}
+
+function renderSearchGhost() {
+    const match = completion && !completion.accepted ? completion.matches[completion.index] : null;
+    if (match) {
+        showGhost(byId('searchGhost'), completion.query, match.text);
+    } else {
+        hideSearchGhost();
+    }
+}
+
+function hideSearchGhost() {
+    hideGhost(byId('searchGhost'));
+}
+
+// Варианты подсказки берутся из текущего вида; после смены фильтров их нужно пересчитать
+function resetCompletion() {
+    completion = null;
+    hideSearchGhost();
+}
+
+// Серая подсказка, общая для поиска бина и поля пакета.
+// Набранная часть повторяется невидимой, чтобы серый хвост начинался ровно после курсора.
+// Берём текст из поля, а не из варианта: у них может отличаться регистр, а значит и ширина букв
+function showGhost(ghost, typed, full) {
+    if (full.length <= typed.length) {
+        hideGhost(ghost);
+        return;
+    }
+    ghost.replaceChildren(el('span', 'ghost-typed', typed), full.slice(typed.length));
+
+    // Если текст не помещается и поле начало прокручиваться, подсказка разъедется с ним, лучше не показывать.
+    // Ширину можно измерить только у видимого элемента, поэтому сначала показываем
+    ghost.hidden = false;
+    ghost.hidden = ghost.scrollWidth > ghost.clientWidth;
+}
+
+function hideGhost(ghost) {
+    ghost.hidden = true;
+    ghost.replaceChildren();
+}
+
+function isCaretAtEnd(input) {
+    return input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+}
+
+// Автодополнение пакета. Подсказывается только следующий сегмент с точкой на конце:
+// com.ex → com.example. → com.example.shop. Tab принимает и сразу предлагает следующий уровень,
+// стрелки ↑↓ переключают соседние пакеты. Точка в конце заодно делает фильтр точным:
+// сервер сравнивает обычным startsWith, и com.example.sh захватил бы и shop, и shipping
+//
+// packageIndex — пакет → сколько бинов в нём и во всех подпакетах, вместе с промежуточными
+// уровнями (com, com.example, com.example.shop, …). Строится по графу без фильтра пакета,
+// иначе после применения фильтра соседние пакеты пропали бы из подсказок.
+// packageIndexKey — адрес запроса без фильтра пакета, по которому построен индекс:
+// пока остальные фильтры не меняются, индекс не перестраивается
+let packageIndex = new Map();
+let packageIndexKey = null;
+// query — текст в поле, matches — варианты { pkg, full, count }, index — какой показан
+let packageCompletion = null;
+let packageTimer = null;
+
+function buildPackageIndex(beanGraph) {
+    const index = new Map();
+    for (const bean of [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])]) {
+        const className = bean.fullClassName;
+        const lastDot = className ? className.lastIndexOf('.') : -1;
+        // Unknown и классы без пакета пропускаем
+        if (lastDot <= 0) continue;
+        const pkg = className.slice(0, lastDot);
+        // бин считается в своём пакете и во всех его предках
+        let dot = -1;
+        do {
+            dot = pkg.indexOf('.', dot + 1);
+            const prefix = dot < 0 ? pkg : pkg.slice(0, dot);
+            index.set(prefix, (index.get(prefix) || 0) + 1);
+        } while (dot >= 0);
+    }
+    return index;
+}
+
+// Вызывается после каждой загрузки графа
+async function updatePackageIndex(beanGraph) {
+    const key = buildGraphUrl({ withPackage: false });
+    if (key === packageIndexKey) return;
+    packageIndexKey = key;
+
+    if (!byId('filterPackage').value.trim()) {
+        // фильтра пакета нет — пришедший граф и есть нужный, лишний запрос не нужен
+        packageIndex = buildPackageIndex(beanGraph);
+    } else {
+        try {
+            const response = await fetch(key);
+            // пока ждали ответ, фильтры могли смениться ещё раз
+            if (key !== packageIndexKey) return;
+            if (!response.ok) {
+                packageIndexKey = null;
+                return;
+            }
+            packageIndex = buildPackageIndex(await response.json());
+        } catch (error) {
+            if (key === packageIndexKey) packageIndexKey = null;
+            return;
+        }
+    }
+    // если человек сейчас в поле, подсказка пересчитывается по новому индексу
+    if (document.activeElement === byId('filterPackage')) {
+        updatePackageCompletion();
+    }
+}
+
+// Пакеты, которые дописывают набранный текст ровно до конца текущего сегмента.
+// Больше бинов — раньше, при равенстве по алфавиту
+function packageMatches(query) {
+    if (!query) return [];
+    const lower = query.toLowerCase();
+    const matches = [];
+    packageIndex.forEach((count, pkg) => {
+        const full = pkg + '.';
+        if (full.length <= query.length) return;
+        if (!full.toLowerCase().startsWith(lower)) return;
+        // точка после набранного означает, что это уже следующий уровень, а не текущий сегмент
+        if (pkg.indexOf('.', query.length) >= 0) return;
+        matches.push({ pkg, full, count });
+    });
+    return matches.sort((a, b) => b.count - a.count || a.pkg.localeCompare(b.pkg));
+}
+
+function updatePackageCompletion() {
+    const query = byId('filterPackage').value;
+    packageCompletion = { query, matches: packageMatches(query), index: 0 };
+    renderPackageGhost();
+}
+
+function renderPackageGhost() {
+    const ghost = byId('packageGhost');
+    const message = byId('packageMessage');
+    const match = currentPackageMatch();
+    if (!match) {
+        hidePackageGhost();
+        return;
+    }
+    // Имена пакетов длинные, а поле узкое: серый хвост часто не помещается и не рисуется.
+    // Подсказка при этом продолжает работать, а что будет подставлено, видно в подписи под полем
+    showGhost(ghost, packageCompletion.query, match.full);
+
+    const count = packageCompletion.matches.length;
+    const tail = match.full.slice(packageCompletion.query.length);
+    message.textContent = (ghost.hidden ? 'Tab → …' + tail : match.pkg.slice(match.pkg.lastIndexOf('.') + 1))
+        + ' · ' + plural(match.count, 'bean', 'beans')
+        + (count > 1 ? ' · ' + (packageCompletion.index + 1) + '/' + count + ' ↑↓' : '');
+}
+
+function currentPackageMatch() {
+    return packageCompletion ? packageCompletion.matches[packageCompletion.index] || null : null;
+}
+
+function hidePackageGhost() {
+    hideGhost(byId('packageGhost'));
+    byId('packageMessage').textContent = '';
+}
+
+function onPackageInput(event) {
+    schedulePackageFilter();
+    if (event.isComposing) return;
+    updatePackageCompletion();
+}
+
+function onPackageKeydown(event) {
+    const input = byId('filterPackage');
+    if (!currentPackageMatch()) return;
+
+    const plainTab = event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey;
+    if (plainTab || (event.key === 'ArrowRight' && isCaretAtEnd(input))) {
+        event.preventDefault();
+        acceptPackage();
+    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && packageCompletion.matches.length > 1) {
+        event.preventDefault();
+        const count = packageCompletion.matches.length;
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        packageCompletion.index = (packageCompletion.index + step + count) % count;
+        renderPackageGhost();
+    } else if (event.key === 'Escape') {
+        // убираем подсказку, а не закрываем панель или подсветку
+        event.stopPropagation();
+        packageCompletion = null;
+        hidePackageGhost();
+    }
+}
+
+function acceptPackage() {
+    const input = byId('filterPackage');
+    const match = packageCompletion.matches[packageCompletion.index];
+    input.value = match.full;
+    input.setSelectionRange(match.full.length, match.full.length);
+    // присваивание value не вызывает событие input, поэтому фильтр и подсказку запускаем сами;
+    // подсказка сразу предлагает следующий уровень
+    schedulePackageFilter();
+    updatePackageCompletion();
+    updateResetButton();
+}
+
+// Фильтр пакета применяется после паузы в наборе, чтобы не дёргать сервер на каждую букву
+function schedulePackageFilter() {
+    clearTimeout(packageTimer);
+    packageTimer = setTimeout(loadGraphData, 400);
+}
+
+// Сброс фильтров. Значения по умолчанию берутся из разметки (checked, value, выбранный option),
+// поэтому при изменении умолчаний в index.html код менять не нужно
+const FILTER_IDS = ['filterSystem', 'filterSolo', 'filterServiceLinks', 'filterPackage', 'filterScope', 'filterStereotype'];
+
+function defaultOptionIndex(select) {
+    const index = [...select.options].findIndex(option => option.defaultSelected);
+    // если ни у одного option нет атрибута selected, браузер выбирает первый
+    return index < 0 ? 0 : index;
+}
+
+function hasDefaultValue(control) {
+    if (control.type === 'checkbox') return control.checked === control.defaultChecked;
+    if (control.tagName === 'SELECT') return control.selectedIndex === defaultOptionIndex(control);
+    return control.value === control.defaultValue;
+}
+
+function restoreDefaultValue(control) {
+    if (control.type === 'checkbox') {
+        control.checked = control.defaultChecked;
+    } else if (control.tagName === 'SELECT') {
+        control.selectedIndex = defaultOptionIndex(control);
+    } else {
+        control.value = control.defaultValue;
+    }
+}
+
+// Кнопка неактивна, когда сбрасывать нечего
+function updateResetButton() {
+    byId('resetFiltersBtn').disabled = FILTER_IDS.every(id => hasDefaultValue(byId(id)));
+}
+
+function resetFilters() {
+    const changed = FILTER_IDS.filter(id => !hasDefaultValue(byId(id)));
+    if (changed.length === 0) return;
+
+    changed.forEach(id => restoreDefaultValue(byId(id)));
+    // отложенное применение уже стёртого текста пакета больше не нужно
+    clearTimeout(packageTimer);
+    packageCompletion = null;
+    hidePackageGhost();
+
+    // служебные связи переключаются на месте, остальные фильтры требуют нового графа с сервера
+    if (changed.includes('filterServiceLinks')) {
+        toggleServiceLinks();
+    }
+    if (changed.some(id => id !== 'filterServiceLinks')) {
+        loadGraphData();
+    }
+    updateResetButton();
 }
 
 function bindEvents() {
     byId('searchForm').addEventListener('submit', findBean);
+    const searchInput = byId('searchInput');
+    searchInput.addEventListener('input', onSearchInput);
+    searchInput.addEventListener('keydown', onSearchKeydown);
+    // После ввода через IME (китайский, японский) событие input приходит раньше окончания набора
+    searchInput.addEventListener('compositionend', onSearchInput);
+    searchInput.addEventListener('blur', hideSearchGhost);
+    searchInput.addEventListener('focus', renderSearchGhost);
 
     // Фильтры применяются сразу; поле пакета — после паузы в наборе
     ['filterSystem', 'filterSolo', 'filterScope', 'filterStereotype'].forEach(id =>
         byId(id).addEventListener('change', loadGraphData));
+    // Служебные связи уже загружены, переключатель только показывает или прячет их
+    byId('filterServiceLinks').addEventListener('change', toggleServiceLinks);
 
-    let packageTimer = null;
-    byId('filterPackage').addEventListener('input', () => {
-        clearTimeout(packageTimer);
-        packageTimer = setTimeout(loadGraphData, 400);
-    });
+    const packageInput = byId('filterPackage');
+    packageInput.addEventListener('input', onPackageInput);
+    packageInput.addEventListener('keydown', onPackageKeydown);
+    packageInput.addEventListener('compositionend', onPackageInput);
+    packageInput.addEventListener('blur', hidePackageGhost);
+    packageInput.addEventListener('focus', updatePackageCompletion);
+
+    // input — набор в поле пакета, change — переключатели и списки
+    byId('filtersPanel').addEventListener('input', updateResetButton);
+    byId('filtersPanel').addEventListener('change', updateResetButton);
+    byId('resetFiltersBtn').addEventListener('click', resetFilters);
+    updateResetButton();
 
     byId('fitBtn').addEventListener('click', fitGraph);
-    byId('findCyclesBtn').addEventListener('click', findCycles);
 
     byId('detailsClose').addEventListener('click', closeDetails);
     document.addEventListener('keydown', (event) => {

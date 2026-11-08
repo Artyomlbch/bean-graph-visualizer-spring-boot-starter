@@ -168,6 +168,43 @@ select:focus-visible {
     background: #34414F;
 }
 
+/* Автодополнение. Фон рисует обёртка, поле ввода прозрачное и лежит сверху,
+   поэтому серый хвост подсказки виден сквозь него, а курсор и выделение работают как обычно */
+.ghost-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border-radius: 6px;
+}
+
+.ghost-field input {
+    position: relative;
+    background: transparent;
+}
+
+.ghost {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    /* рамка поля 1px + его внутренний отступ 10px, чтобы буквы совпали с набранными */
+    padding: 0 11px;
+    overflow: hidden;
+    white-space: pre;
+    color: var(--muted);
+    opacity: 0.75;
+    pointer-events: none;
+}
+
+.ghost[hidden] {
+    display: none;
+}
+
+.ghost-typed {
+    visibility: hidden;
+}
+
 .search-message {
     margin: 6px 0 0;
     font-size: 13px;
@@ -344,6 +381,25 @@ select:focus-visible {
     color: var(--muted);
 }
 
+/* Итог поиска циклов в заголовке панели Analysis, прижат вправо к стрелке */
+.analysis-badge {
+    margin-left: auto;
+    padding: 0 7px;
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+}
+
+.analysis-badge[data-found] {
+    color: var(--cycle-text);
+    border-color: var(--cycle);
+}
+
+.analysis-badge[hidden] {
+    display: none;
+}
+
 .cycle-total {
     font-weight: 400;
     color: var(--faint);
@@ -401,8 +457,27 @@ select:focus-visible {
 }
 
 .cycle-label {
+    min-width: 0;
     font: 12.5px var(--font-code);
-    word-break: break-all;
+    /* переносим по пробелам, а длинное имя без пробелов разбиваем, только если иначе не влезает */
+    overflow-wrap: anywhere;
+}
+
+/* Сколько бинов цикла видно при текущих фильтрах */
+.cycle-visibility {
+    flex: none;
+    font-size: 11px;
+    color: var(--faint);
+    white-space: nowrap;
+}
+
+.cycle-visibility[hidden] {
+    display: none;
+}
+
+/* Все бины цикла скрыты фильтрами */
+.cycle-button.is-filtered-out .cycle-label {
+    opacity: 0.55;
 }
 
 .cycle-count {

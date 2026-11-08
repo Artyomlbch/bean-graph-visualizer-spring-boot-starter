@@ -18,7 +18,12 @@
         <div>
             <form class="search" id="searchForm" role="search">
                 <label class="visually-hidden" for="searchInput">Find a bean</label>
-                <input type="search" id="searchInput" placeholder="Find a bean by name" autocomplete="off" spellcheck="false">
+                <div class="ghost-field">
+                    <!-- Серая подсказка лежит под прозрачным полем ввода и повторяет его шрифт и отступы -->
+                    <span class="ghost" id="searchGhost" aria-hidden="true" hidden></span>
+                    <input type="search" id="searchInput" placeholder="Find a bean by name" autocomplete="off"
+                           spellcheck="false" aria-autocomplete="inline">
+                </div>
                 <button type="submit" id="searchBtn">Find</button>
             </form>
             <p class="search-message" id="searchMessage" role="status"></p>
@@ -38,16 +43,20 @@
                 <span class="toggle-track" aria-hidden="true"></span>
                 <span>Hide beans without links</span>
             </label>
-
             <label class="toggle">
-                <input type="checkbox" id="filterServiceLinks">
+                <input type="checkbox" id="filterServiceLinks" checked>
                 <span class="toggle-track" aria-hidden="true"></span>
                 <span>Show “declared in” and @DependsOn links</span>
             </label>
 
             <div class="field">
                 <label for="filterPackage">Package starts with</label>
-                <input type="text" id="filterPackage" placeholder="com.example.orders" spellcheck="false">
+                <div class="ghost-field">
+                    <span class="ghost" id="packageGhost" aria-hidden="true" hidden></span>
+                    <input type="text" id="filterPackage" placeholder="com.example.orders" autocomplete="off"
+                           spellcheck="false" aria-autocomplete="inline" aria-describedby="packageMessage">
+                </div>
+                <p class="search-message" id="packageMessage" role="status"></p>
             </div>
 
             <div class="field">
@@ -70,16 +79,20 @@
                 </select>
                 <p class="hint" id="stereotypeHint">Beans of this stereotype and the beans they use.</p>
             </div>
+
+            <button type="button" class="secondary-button" id="resetFiltersBtn">Reset filters</button>
             </div>
         </details>
 
         <details class="analysis collapsible" id="analysisPanel">
-            <summary><h2 id="analysisTitle">Analysis</h2></summary>
+            <summary>
+                <h2 id="analysisTitle">Analysis</h2>
+                <!-- Итог поиска циклов виден и в свёрнутой панели -->
+                <span class="analysis-badge" id="cycleBadge" hidden></span>
+            </summary>
 
             <div class="panel-body">
-                <button type="button" class="secondary-button" id="findCyclesBtn">Find cycles</button>
                 <div id="cycleResults" aria-live="polite"></div>
-                <p class="cycle-note" id="cycleHiddenNote" hidden></p>
             </div>
         </details>
 
