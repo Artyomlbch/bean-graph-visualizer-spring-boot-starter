@@ -63,20 +63,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initNetwork() {
     const options = {
-        physics: {
-            solver: 'forceAtlas2Based',
-            forceAtlas2Based: {
-                gravitationalConstant: -150,
-                centralGravity: 0.01,
-                springLength: 130,
-                springConstant: 0.08,
-                // Узлы — широкие прямоугольники, а не точки: без этого подписи налезают друг на друга
-                avoidOverlap: 1
-            },
-            stabilization: { iterations: 250, updateInterval: 25 }
-        },
-        // Одинаковая раскладка при каждой загрузке одного и того же графа
-        layout: { improvedLayout: true, randomSeed: 42 },
+        // Координаты считает layout.js (ForceAtlas2 + постобработка), vis-network только рисует.
+        // Физика выключена: граф не «плывёт», узлы можно перетаскивать, и они остаются, где их оставили
+        physics: { enabled: false },
+        layout: { improvedLayout: false },
         interaction: { hover: true, tooltipDelay: 300 },
         nodes: {
             shape: 'box',
@@ -99,16 +89,6 @@ function initNetwork() {
 
     network.on('beforeDrawing', drawGrid);
 
-    network.on('stabilizationProgress', ({ iterations, total }) => {
-        setStatus('Laying out the graph… ' + Math.round(iterations / total * 100) + '%');
-    });
-    // Когда раскладка готова, физика выключается: граф перестаёт «плыть», пока его разглядывают.
-    // Перетаскивать узлы по-прежнему можно
-    network.on('stabilizationIterationsDone', () => {
-        network.setOptions({ physics: { enabled: false } });
-        network.fit();
-        setStatus(graphSummary);
-    });
     network.on('selectNode', (params) => selectBean(params.nodes[0], { focus: false }));
     network.on('deselectNode', (params) => {
         if (params.nodes.length === 0) {
@@ -194,7 +174,7 @@ async function loadGraphData() {
             return;
         }
         const beanGraph = await response.json();
-        drawGraph(beanGraph);
+        drawGraph(beanGraph, requestNumber);
         updatePackageIndex(beanGraph);
     } catch (error) {
         if (requestNumber === requestCounter) {
@@ -218,7 +198,7 @@ function showLoadError(status, body) {
     }
 }
 
-function drawGraph(beanGraph) {
+async function drawGraph(beanGraph, requestNumber) {
     clearGraph();
 
     const beans = [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])];
@@ -234,19 +214,46 @@ function drawGraph(beanGraph) {
     }
 
     hideCanvasMessage();
-    nodesDataSet.add(beans.map(toVisNode));
+    setStatus('Laying out the graph…');
+    // Раскладка занимает основной поток (на графе из ~200 бинов около 0.3 с).
+    // Сначала даём браузеру отрисовать статус, потом считаем
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    // пока ждали, могли сменить фильтры — тогда рисовать будет более новый запрос
+    if (requestNumber !== requestCounter) return;
+
+    const positions = IocLayout.compute(
+        beans.map(bean => ({ id: bean.id, ...nodeSize(bean) })),
+        edges.map(edge => ({ from: edge.source.id, to: edge.target.id })));
+    nodesDataSet.add(beans.map(bean => ({ ...toVisNode(bean), ...positions[bean.id] })));
     edgesDataSet.add(edges.map(toVisEdge));
     updateCycleVisibility();
+    network.fit();
+    setStatus(graphSummary);
 
     // Цикл, выбранный до смены фильтров, остаётся подсвеченным в новом наборе бинов
     if (activeCycleKey !== null) {
         applyActiveCycle({ fit: false });
     }
+}
 
-    // Раскладку для нового набора бинов считаем явно: при добавлении данных vis-network
-    // сам её не запускает и не вписывает граф в экран
-    network.setOptions({ physics: { enabled: true } });
-    network.stabilize(250);
+// Размер узла нужен раскладке до того, как vis-network его нарисует, поэтому считаем сами:
+// ширина подписи тем же шрифтом плюс поля. Поля = nodes.margin (10 + 10 и 7 + 7) и ещё 8 px,
+// которые vis-network добавляет к прямоугольнику; сверено с network.getBoundingBox()
+const measureContext = document.createElement('canvas').getContext('2d');
+const NODE_MARGIN_X = 28;
+const NODE_MARGIN_Y = 22;
+
+function nodeFontSize(bean) {
+    return bean.isSystem ? 12 : 13;
+}
+
+function nodeSize(bean) {
+    const fontSize = nodeFontSize(bean);
+    measureContext.font = fontSize + 'px ' + CODE_FONT;
+    return {
+        width: measureContext.measureText(bean.id).width + NODE_MARGIN_X,
+        height: fontSize + NODE_MARGIN_Y
+    };
 }
 
 function clearGraph() {
@@ -269,7 +276,7 @@ function toVisNode(bean) {
             highlight: { background: style.fill, border: INK },
             hover: { background: style.fill, border: INK }
         },
-        font: { color: style.text, size: bean.isSystem ? 12 : 13 },
+        font: { color: style.text, size: nodeFontSize(bean) },
         borderWidth: bean.isSystem ? 1 : 1.5,
         borderWidthSelected: 2.5,
         // Служебные бины Spring и библиотек обведены пунктиром
