@@ -131,6 +131,13 @@
     <main class="canvas">
         <div id="network-container" aria-label="Dependency graph"></div>
         <p class="canvas-message" id="canvasMessage" hidden></p>
+        <!-- Плашка над схемой модульного цикла (module-focus.js) -->
+        <div class="focus-banner" id="focusBanner" hidden>
+            <span class="focus-label">Module cycle</span>
+            <span class="focus-title" id="focusTitle"></span>
+            <button type="button" class="focus-action" id="focusShowInGraph">Show in full graph</button>
+            <button type="button" class="focus-close" id="focusClose" aria-label="Close the cycle scheme">×</button>
+        </div>
         <button type="button" class="fit-button" id="fitBtn">Fit graph</button>
 
         <aside class="details" id="details-panel" aria-label="Bean details" aria-hidden="true" inert>
@@ -140,5 +147,6 @@
     </main>
 </div>
 <script src="app.js"></script>
+<script src="module-focus.js"></script>
 </body>
 </html>

@@ -88,6 +88,8 @@ function initNetwork() {
     network = new vis.Network(byId('network-container'), { nodes: nodesDataSet, edges: edgesDataSet }, options);
 
     network.on('beforeDrawing', drawGrid);
+    // облака модулей на схеме модульного цикла (module-focus.js)
+    network.on('beforeDrawing', drawModuleClouds);
 
     network.on('selectNode', (params) => selectBean(params.nodes[0], { focus: false }));
     network.on('deselectNode', (params) => {
@@ -95,8 +97,10 @@ function initNetwork() {
             clearSelection();
         }
     });
-    // Клик по пустому месту снимает подсветку цикла
+    // Клик по пустому месту снимает подсветку цикла. На схеме модульного цикла — нет:
+    // из схемы выходят кнопкой или Esc, а не случайным кликом мимо узла
     network.on('click', (params) => {
+        if (isModuleFocusOpen()) return;
         if (params.nodes.length === 0 && params.edges.length === 0) {
             clearCycleHighlight();
         }
@@ -163,6 +167,9 @@ function buildGraphUrl({ withPackage = true } = {}) {
 async function loadGraphData() {
     // Если фильтры меняют быстрее, чем приходит ответ, рисуем только последний ответ
     const requestNumber = ++requestCounter;
+    // Фильтры относятся к основному графу: схема цикла закрывается, а цикл после загрузки
+    // подсветится на новом графе
+    exitModuleFocus({ restore: false });
     setStatus('Loading graph…');
 
     try {
@@ -174,7 +181,7 @@ async function loadGraphData() {
             return;
         }
         const beanGraph = await response.json();
-        drawGraph(beanGraph, requestNumber);
+        await drawGraph(beanGraph, requestNumber);
         updatePackageIndex(beanGraph);
     } catch (error) {
         if (requestNumber === requestCounter) {
@@ -199,6 +206,9 @@ function showLoadError(status, body) {
 }
 
 async function drawGraph(beanGraph, requestNumber) {
+    // Схему модульного цикла могли открыть, пока шёл запрос: новый граф её заменяет,
+    // а цикл ниже подсветится уже на нём
+    exitModuleFocus({ restore: false });
     clearGraph();
 
     const beans = [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])];
@@ -220,6 +230,12 @@ async function drawGraph(beanGraph, requestNumber) {
     await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     // пока ждали, могли сменить фильтры — тогда рисовать будет более новый запрос
     if (requestNumber !== requestCounter) return;
+    // или открыть схему цикла: она успела занять пустой холст, освобождаем его
+    if (isModuleFocusOpen()) {
+        exitModuleFocus({ restore: false });
+        nodesDataSet.clear();
+        edgesDataSet.clear();
+    }
 
     const positions = IocLayout.compute(
         beans.map(bean => ({ id: bean.id, ...nodeSize(bean) })),
@@ -341,11 +357,12 @@ function selectBean(id, { focus = true } = {}) {
     const node = nodesDataSet.get(id);
     if (!node) return;
 
-    deactivateCycle();
+    // на схеме модульного цикла выбор бина цикл не сбрасывает: схема и есть этот цикл
+    if (!isModuleFocusOpen()) deactivateCycle();
     selectedId = id;
     network.selectNodes([id]);
     highlightNeighbourhood(id);
-    showNodeDetails(node.meta);
+    showNodeDetails(node.meta, id);
 
     if (focus) {
         network.focus(id, {
@@ -374,7 +391,7 @@ function highlight(nodeIds, edgeIds, edgeColor = null) {
             color: recolor
                 ? { color: edgeColor, highlight: edgeColor, hover: edgeColor, opacity: 1 }
                 : { ...edge.baseColor, opacity: near ? 1 : 0.15 },
-            width: recolor ? 2.4 : EDGE_WIDTH,
+            width: recolor ? 2.4 : edge.baseWidth || EDGE_WIDTH,
             // Подсвеченные рёбра видны, даже если это скрытые служебные связи
             hidden: !near && isHiddenByDefault(edge),
             font: { color: near ? INK : 'rgba(91, 104, 119, 0.15)' }
@@ -387,7 +404,7 @@ function resetHighlight() {
     edgesDataSet.update(edgesDataSet.get().map(edge => ({
         id: edge.id,
         color: { ...edge.baseColor, opacity: 1 },
-        width: EDGE_WIDTH,
+        width: edge.baseWidth || EDGE_WIDTH,
         hidden: isHiddenByDefault(edge),
         font: { color: LABEL_COLOR }
     })));
@@ -407,13 +424,15 @@ function closeDetails() {
 
 // Панель деталей. Все значения из графа вставляются через textContent, поэтому HTML в них не выполняется
 
-function showNodeDetails(bean) {
+// nodeId — id узла на холсте. Обычно это имя бина, но на схеме модульного цикла бин может
+// стоять в двух облаках, и тогда у каждой копии свой id
+function showNodeDetails(bean, nodeId = bean.id) {
     const info = byId('node-info');
     info.replaceChildren(
         el('h2', 'bean-id', bean.id),
         classLine(bean.fullClassName),
         chips(bean),
-        linkSection(bean)
+        linkSection(nodeId)
     );
 
     const panel = byId('details-panel');
@@ -462,19 +481,19 @@ function chips(bean) {
 }
 
 // Связи бина: переключатель направления и список выбранного направления
-function linkSection(bean) {
+function linkSection(nodeId) {
     const directions = [
         {
             key: 'dependencies',
             title: 'Depends on',
-            edges: edgesDataSet.get({ filter: edge => edge.from === bean.id }),
+            edges: edgesDataSet.get({ filter: edge => edge.from === nodeId }),
             otherEnd: edge => edge.to,
             empty: 'Doesn’t depend on other beans in this view.'
         },
         {
             key: 'dependents',
             title: 'Used by',
-            edges: edgesDataSet.get({ filter: edge => edge.to === bean.id }),
+            edges: edgesDataSet.get({ filter: edge => edge.to === nodeId }),
             otherEnd: edge => edge.from,
             empty: 'No bean in this view depends on it.'
         }
@@ -520,6 +539,9 @@ function linkList(direction) {
         .sort((a, b) => direction.otherEnd(a).localeCompare(direction.otherEnd(b)))
         .forEach(edge => {
             const name = direction.otherEnd(edge);
+            // показываем имя бина, а не id узла (у копии на схеме цикла они разные)
+            const other = nodesDataSet.get(name);
+            const beanName = other ? other.meta.id : name;
             const button = el('button');
             button.type = 'button';
             // В коде может быть интерфейс, а внедрена его реализация: тогда пишем, через какой тип
@@ -530,7 +552,7 @@ function linkList(direction) {
             if (via) {
                 kind.title = edge.declaredType;
             }
-            button.append(el('span', 'link-name', name), kind);
+            button.append(el('span', 'link-name', beanName), kind);
             button.addEventListener('click', () => selectBean(name));
 
             const item = el('li');
@@ -612,7 +634,7 @@ function moduleCycleItem(cycle, index) {
     const item = el('li');
     const allEdges = cycle.links.flatMap(link => link.edges);
     item.append(cycleButton('module-' + index, joinCycle(cycle.modules.map(shortModule)),
-        cycleTarget(allEdges), cycle.modules.join('\n'), { showVisibility: true }));
+        cycleTarget(allEdges), cycle.modules.join('\n'), { showVisibility: true, moduleCycle: cycle }));
 
     const links = el('ul', 'cycle-links');
     cycle.links.forEach((link, linkIndex) => {
@@ -658,16 +680,23 @@ function joinCycle(names) {
     return names.length === 2 ? names[0] + ' ⇄ ' + names[1] : names.join(', ');
 }
 
+// Рёбра цикла узнаются по паре бинов и типу ребра: между двумя бинами может быть
+// и внедрение, и «declared in», а в цикл входит только одно из них
+function linkKey(from, to, kind) {
+    return from + '\u0000' + to + '\u0000' + (kind || 'INJECTION');
+}
+
 function cycleTarget(edges, beans = []) {
     return {
         nodes: [...new Set([...beans, ...edges.flatMap(edge => [edge.source.id, edge.target.id])])],
-        links: edges.map(edge => edge.source.id + '\u0000' + edge.target.id)
+        links: edges.map(edge => linkKey(edge.source.id, edge.target.id, edge.kind))
     };
 }
 
 // showVisibility — показывать у кнопки, сколько бинов цикла видно при текущих фильтрах.
 // Нужно только у самих циклов: у связей внутри модульного цикла справа уже стоит число рёбер
-function cycleButton(key, label, target, title, { showVisibility = false } = {}) {
+// moduleCycle — у кнопки самого модульного цикла: по клику открывается его схема
+function cycleButton(key, label, target, title, { showVisibility = false, moduleCycle = null } = {}) {
     const button = el('button', 'cycle-button');
     button.type = 'button';
     button.title = title;
@@ -680,7 +709,7 @@ function cycleButton(key, label, target, title, { showVisibility = false } = {})
         button.append(visibility);
     }
     button.addEventListener('click', () => toggleCycle(key));
-    cycleTargets.set(key, { target, button, visibility });
+    cycleTargets.set(key, { target, button, visibility, moduleCycle });
     return button;
 }
 
@@ -705,20 +734,38 @@ function toggleCycle(key) {
         return;
     }
     closeDetails();
+    const entry = cycleTargets.get(key);
+
+    // Модульный цикл открывается схемой с облаками модулей
+    if (entry && entry.moduleCycle) {
+        activeCycleKey = key;
+        markActiveCycleButton();
+        enterModuleFocus(key, entry.moduleCycle);
+        return;
+    }
+
+    // Цикл бинов и отдельная связь модульного цикла подсвечиваются на основном графе
+    exitModuleFocus({ restore: true });
     activeCycleKey = key;
     applyActiveCycle({ fit: true });
+}
+
+function markActiveCycleButton() {
+    cycleTargets.forEach(({ button }, key) => button.setAttribute('aria-pressed', String(key === activeCycleKey)));
 }
 
 function applyActiveCycle({ fit }) {
     const entry = cycleTargets.get(activeCycleKey);
     if (!entry) return;
 
-    cycleTargets.forEach(({ button }, key) => button.setAttribute('aria-pressed', String(key === activeCycleKey)));
+    markActiveCycleButton();
+    // на схеме модульного цикла все рёбра и так красные
+    if (isModuleFocusOpen()) return;
 
     const { nodes, links } = entry.target;
     const visible = nodes.filter(id => nodesDataSet.get(id) !== null);
     const linkSet = new Set(links);
-    const edgeIds = new Set(edgesDataSet.get({ filter: edge => linkSet.has(edge.from + '\u0000' + edge.to) })
+    const edgeIds = new Set(edgesDataSet.get({ filter: edge => linkSet.has(linkKey(edge.from, edge.to, edge.kind)) })
         .map(edge => edge.id));
     highlight(new Set(visible), edgeIds, CYCLE_COLOR);
 
@@ -737,6 +784,12 @@ function deactivateCycle() {
 function clearCycleHighlight() {
     if (activeCycleKey === null) return;
     deactivateCycle();
+    if (isModuleFocusOpen()) {
+        // основной граф был сохранён без подсветки, его достаточно вернуть
+        closeDetails();
+        exitModuleFocus({ restore: true });
+        return;
+    }
     resetHighlight();
 }
 
@@ -756,7 +809,9 @@ function rankMatches(query, { prefixOnly = false } = {}) {
     if (!lower) return [];
 
     const matches = [];
-    nodesDataSet.forEach(node => {
+    // при открытой схеме цикла на холсте только её бины, а искать нужно по основному графу
+    const candidates = isModuleFocusOpen() ? focusSavedNodes() : nodesDataSet.get();
+    candidates.forEach(node => {
         let best = null;
         for (const text of new Set([node.id, shortBeanName(node.id)])) {
             const name = text.toLowerCase();
@@ -788,6 +843,8 @@ function shortBeanName(id) {
 
 function findBean(event) {
     event.preventDefault();
+    // ищем по основному графу, а не по схеме цикла
+    if (isModuleFocusOpen()) clearCycleHighlight();
     hideSearchGhost();
     const message = byId('searchMessage');
     const query = byId('searchInput').value.trim();
@@ -1163,6 +1220,7 @@ function bindEvents() {
     updateResetButton();
 
     byId('fitBtn').addEventListener('click', fitGraph);
+    bindModuleFocusEvents();
 
     byId('detailsClose').addEventListener('click', closeDetails);
     document.addEventListener('keydown', (event) => {
