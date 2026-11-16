@@ -5,55 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bean graph</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="vis-network.min.js"></script>
-    <!-- Раскладка графа: ForceAtlas2 из graphology и постобработка -->
-    <script src="forceatlas2.js"></script>
-    <script src="layout.js"></script>
+    <script src="vendor/vis-network.min.js"></script>
+    <script src="vendor/forceatlas2.js"></script>
+    <script src="js/layout.js"></script>
+    <script src="js/i18n.js"></script>
 </head>
 <body>
 <div class="layout">
-    <aside class="sidebar" aria-label="Graph controls">
+    <aside class="sidebar" aria-label="Graph controls" data-i18n-aria-label="aria.controls">
         <header>
-            <h1>Bean graph</h1>
-            <p class="status" id="graphStatus" role="status">Loading graph…</p>
+            <div class="title-row">
+                <h1 data-i18n="app.title">Bean graph</h1>
+                <button type="button" class="language-button" id="languageBtn" hidden></button>
+            </div>
+            <p class="status" id="graphStatus" role="status" data-i18n="status.loading">Loading graph…</p>
         </header>
 
         <div>
             <form class="search" id="searchForm" role="search">
-                <label class="visually-hidden" for="searchInput">Find a bean</label>
+                <label class="visually-hidden" for="searchInput" data-i18n="search.label">Find a bean</label>
                 <div class="ghost-field">
                     <!-- Серая подсказка лежит под прозрачным полем ввода и повторяет его шрифт и отступы -->
                     <span class="ghost" id="searchGhost" aria-hidden="true" hidden></span>
                     <input type="search" id="searchInput" placeholder="Find a bean by name" autocomplete="off"
-                           spellcheck="false" aria-autocomplete="inline">
+                           spellcheck="false" aria-autocomplete="inline" data-i18n-placeholder="search.placeholder">
                 </div>
-                <button type="submit" id="searchBtn">Find</button>
+                <button type="submit" id="searchBtn" data-i18n="search.submit">Find</button>
             </form>
             <p class="search-message" id="searchMessage" role="status"></p>
         </div>
 
         <details class="filters collapsible" id="filtersPanel">
-            <summary><h2 id="filtersTitle">Filters</h2></summary>
+            <summary><h2 id="filtersTitle" data-i18n="filters.title">Filters</h2></summary>
 
             <div class="panel-body">
             <label class="toggle">
                 <input type="checkbox" id="filterSystem" checked>
                 <span class="toggle-track" aria-hidden="true"></span>
-                <span>Only application beans</span>
+                <span data-i18n="filter.system">Only application beans</span>
             </label>
             <label class="toggle">
                 <input type="checkbox" id="filterSolo">
                 <span class="toggle-track" aria-hidden="true"></span>
-                <span>Hide beans without links</span>
+                <span data-i18n="filter.solo">Hide beans without links</span>
             </label>
             <label class="toggle">
                 <input type="checkbox" id="filterServiceLinks" checked>
                 <span class="toggle-track" aria-hidden="true"></span>
-                <span>Show “declared in” and @DependsOn links</span>
+                <span data-i18n="filter.serviceLinks">Show “declared in” and @DependsOn links</span>
             </label>
 
             <div class="field">
-                <label for="filterPackage">Package starts with</label>
+                <label for="filterPackage" data-i18n="filter.package">Package starts with</label>
                 <div class="ghost-field">
                     <span class="ghost" id="packageGhost" aria-hidden="true" hidden></span>
                     <input type="text" id="filterPackage" placeholder="com.example.orders" autocomplete="off"
@@ -63,33 +66,33 @@
             </div>
 
             <div class="field">
-                <label for="filterScope">Scope</label>
+                <label for="filterScope" data-i18n="filter.scope">Scope</label>
                 <select id="filterScope">
-                    <option value="ALL">Any</option>
-                    <option value="SINGLETON_ONLY">Singleton</option>
-                    <option value="PROTOTYPE_ONLY">Prototype</option>
+                    <option value="ALL" data-i18n="filter.scope.any">Any</option>
+                    <option value="SINGLETON_ONLY" data-i18n="scope.SINGLETON">Singleton</option>
+                    <option value="PROTOTYPE_ONLY" data-i18n="scope.PROTOTYPE">Prototype</option>
                 </select>
             </div>
 
             <div class="field">
-                <label for="filterStereotype">Stereotype</label>
+                <label for="filterStereotype" data-i18n="filter.stereotype">Stereotype</label>
                 <select id="filterStereotype" aria-describedby="stereotypeHint">
-                    <option value="ALL">Any</option>
+                    <option value="ALL" data-i18n="filter.stereotype.any">Any</option>
                     <option value="CONTROLLER">@Controller</option>
                     <option value="SERVICE">@Service</option>
                     <option value="REPOSITORY">@Repository</option>
                     <option value="CONFIGURATION">@Configuration</option>
                 </select>
-                <p class="hint" id="stereotypeHint">Beans of this stereotype and the beans they use.</p>
+                <p class="hint" id="stereotypeHint" data-i18n="filter.stereotype.hint">Beans of this stereotype and the beans they use.</p>
             </div>
 
-            <button type="button" class="secondary-button" id="resetFiltersBtn">Reset filters</button>
+            <button type="button" class="secondary-button" id="resetFiltersBtn" data-i18n="filters.reset">Reset filters</button>
             </div>
         </details>
 
         <details class="analysis collapsible" id="analysisPanel">
             <summary>
-                <h2 id="analysisTitle">Analysis</h2>
+                <h2 id="analysisTitle" data-i18n="analysis.title">Analysis</h2>
                 <!-- Итог поиска циклов виден и в свёрнутой панели -->
                 <span class="analysis-badge" id="cycleBadge" hidden></span>
             </summary>
@@ -100,14 +103,14 @@
         </details>
 
         <section class="legend" aria-labelledby="legendTitle">
-            <h2 id="legendTitle">Legend</h2>
+            <h2 id="legendTitle" data-i18n="legend.title">Legend</h2>
             <ul class="legend-list">
-                <li><span class="swatch swatch-controller"></span>Controller</li>
-                <li><span class="swatch swatch-service"></span>Service</li>
-                <li><span class="swatch swatch-repository"></span>Repository</li>
-                <li><span class="swatch swatch-configuration"></span>Configuration</li>
-                <li><span class="swatch swatch-other"></span>Other application bean</li>
-                <li><span class="swatch swatch-framework"></span>Framework or library bean</li>
+                <li><span class="swatch swatch-controller"></span><span data-i18n="stereotype.CONTROLLER">Controller</span></li>
+                <li><span class="swatch swatch-service"></span><span data-i18n="stereotype.SERVICE">Service</span></li>
+                <li><span class="swatch swatch-repository"></span><span data-i18n="stereotype.REPOSITORY">Repository</span></li>
+                <li><span class="swatch swatch-configuration"></span><span data-i18n="stereotype.CONFIGURATION">Configuration</span></li>
+                <li><span class="swatch swatch-other"></span><span data-i18n="legend.other">Other application bean</span></li>
+                <li><span class="swatch swatch-framework"></span><span data-i18n="bean.framework">Framework or library bean</span></li>
             </ul>
             <ul class="legend-list">
                 <li>
@@ -115,38 +118,41 @@
                         <line x1="1" y1="5" x2="23" y2="5" stroke="currentColor" stroke-width="1.5"/>
                         <path d="M22 1.5 L29 5 L22 8.5 Z" fill="currentColor"/>
                     </svg>
-                    Injected dependency
+                    <span data-i18n="legend.injected">Injected dependency</span>
                 </li>
                 <li>
                     <svg class="line-sample" width="30" height="10" viewBox="0 0 30 10" aria-hidden="true">
                         <line x1="1" y1="5" x2="23" y2="5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
                         <path d="M22 1.5 L29 5 L22 8.5 Z" fill="currentColor"/>
                     </svg>
-                    Declared in, @DependsOn
+                    <span data-i18n="legend.declared">Declared in, @DependsOn</span>
                 </li>
             </ul>
         </section>
     </aside>
 
     <main class="canvas">
-        <div id="network-container" aria-label="Dependency graph"></div>
+        <div id="network-container" aria-label="Dependency graph" data-i18n-aria-label="aria.graph"></div>
         <p class="canvas-message" id="canvasMessage" hidden></p>
         <!-- Плашка над схемой модульного цикла (module-focus.js) -->
         <div class="focus-banner" id="focusBanner" hidden>
-            <span class="focus-label">Module cycle</span>
+            <span class="focus-label" data-i18n="focus.label">Module cycle</span>
             <span class="focus-title" id="focusTitle"></span>
-            <button type="button" class="focus-action" id="focusShowInGraph">Show in full graph</button>
-            <button type="button" class="focus-close" id="focusClose" aria-label="Close the cycle scheme">×</button>
+            <button type="button" class="focus-action" id="focusShowInGraph" data-i18n="focus.showInGraph">Show in full graph</button>
+            <button type="button" class="focus-close" id="focusClose" aria-label="Close the cycle scheme"
+                    data-i18n-aria-label="aria.closeScheme">×</button>
         </div>
-        <button type="button" class="fit-button" id="fitBtn">Fit graph</button>
+        <button type="button" class="fit-button" id="fitBtn" data-i18n="graph.fit">Fit graph</button>
 
-        <aside class="details" id="details-panel" aria-label="Bean details" aria-hidden="true" inert>
-            <button type="button" class="details-close" id="detailsClose" aria-label="Close details">×</button>
+        <aside class="details" id="details-panel" aria-label="Bean details" data-i18n-aria-label="aria.details"
+               aria-hidden="true" inert>
+            <button type="button" class="details-close" id="detailsClose" aria-label="Close details"
+                    data-i18n-aria-label="aria.closeDetails">×</button>
             <div id="node-info"></div>
         </aside>
     </main>
 </div>
-<script src="app.js"></script>
-<script src="module-focus.js"></script>
+<script src="js/app.js"></script>
+<script src="js/module-focus.js"></script>
 </body>
 </html>

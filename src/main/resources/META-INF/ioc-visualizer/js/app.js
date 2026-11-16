@@ -3,13 +3,14 @@ const CYCLES_URL = '../api/ioc-visualizer/analysis/cycles';
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Цвета узлов по стереотипу: заливка, рамка и текст. Совпадают с легендой в styles.css
+// Цвета узлов по стереотипу: заливка, рамка и текст. Совпадают с легендой в styles.css.
+// Название стереотипа зависит от языка и берётся из словаря: stereotypeName()
 const STEREOTYPES = {
-    CONTROLLER:    { name: 'Controller',    fill: '#EFE9FC', border: '#6A3FC9', text: '#3A1F7A' },
-    SERVICE:       { name: 'Service',       fill: '#DFF3EC', border: '#13806C', text: '#0B4D41' },
-    REPOSITORY:    { name: 'Repository',    fill: '#FCEDD6', border: '#B26A0C', text: '#6B3F06' },
-    CONFIGURATION: { name: 'Configuration', fill: '#FBE4EE', border: '#B0386B', text: '#6A1F3F' },
-    UNKNOWN:       { name: 'No stereotype', fill: '#FFFFFF', border: '#67768A', text: '#1C2631' }
+    CONTROLLER:    { fill: '#EFE9FC', border: '#6A3FC9', text: '#3A1F7A' },
+    SERVICE:       { fill: '#DFF3EC', border: '#13806C', text: '#0B4D41' },
+    REPOSITORY:    { fill: '#FCEDD6', border: '#B26A0C', text: '#6B3F06' },
+    CONFIGURATION: { fill: '#FBE4EE', border: '#B0386B', text: '#6A1F3F' },
+    UNKNOWN:       { fill: '#FFFFFF', border: '#67768A', text: '#1C2631' }
 };
 const FRAMEWORK_STYLE = { fill: '#F4F6F8', border: '#A4AFBB', text: '#5B6877' };
 
@@ -24,17 +25,6 @@ const CYCLE_COLOR = '#C8322A';
 const EDGE_WIDTH = 1.2;
 const UI_FONT = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Arial, sans-serif';
 const CODE_FONT = '"Cascadia Mono", "JetBrains Mono", Consolas, "SFMono-Regular", Menlo, monospace';
-
-// Подписи рёбер и списков в панели деталей
-const LINK_LABELS = {
-    CONSTRUCTOR: 'constructor',
-    FIELD: 'field',
-    SETTER: 'method',
-    FACTORY_METHOD: '@Bean method',
-    UNKNOWN: 'unknown',
-    DECLARED_IN: 'declared in',
-    DEPENDS_ON: '@DependsOn'
-};
 
 const nodesDataSet = new vis.DataSet();
 const edgesDataSet = new vis.DataSet();
@@ -53,6 +43,10 @@ let graphSummary = '';
 let graphLoaded = false;
 
 const byId = (id) => document.getElementById(id);
+
+// Разметка переводится сразу: скрипт стоит в конце body, элементы уже есть, а ждать DOMContentLoaded
+// значило бы на мгновение показать английский текст на русском интерфейсе
+IocI18n.apply();
 
 document.addEventListener('DOMContentLoaded', () => {
     initNetwork();
@@ -170,7 +164,7 @@ async function loadGraphData() {
     // Фильтры относятся к основному графу: схема цикла закрывается, а цикл после загрузки
     // подсветится на новом графе
     exitModuleFocus({ restore: false });
-    setStatus('Loading graph…');
+    setStatus(t('status.loading'));
 
     try {
         const response = await fetch(buildGraphUrl());
@@ -192,16 +186,17 @@ async function loadGraphData() {
 
 function showLoadError(status, body) {
     clearGraph();
-    setStatus('Graph not loaded');
+    setStatus(t('status.notLoaded'));
 
+    // Текст ошибки 400 приходит от сервера как есть, на английском: это сообщение для разработчика
     if (status === 404) {
-        showCanvasMessage('The graph API is not available. Check that the application sets ioc-visualizer.enabled=true.');
+        showCanvasMessage(t('error.notFound'));
     } else if (status === 400) {
-        showCanvasMessage('The server rejected the filters: ' + (body || 'bad request') + '.');
+        showCanvasMessage(t('error.badFilters', { detail: body || t('error.badRequest') }));
     } else if (status === 0) {
-        showCanvasMessage('Can’t reach the application. Check that it is running.');
+        showCanvasMessage(t('error.unreachable'));
     } else {
-        showCanvasMessage('The server returned an error (HTTP ' + status + ').');
+        showCanvasMessage(t('error.http', { status }));
     }
 }
 
@@ -213,18 +208,18 @@ async function drawGraph(beanGraph, requestNumber) {
 
     const beans = [...(beanGraph.nodes || []), ...(beanGraph.soloNodes || [])];
     const edges = beanGraph.edges || [];
-    graphSummary = plural(beans.length, 'bean', 'beans') + ', ' + plural(edges.length, 'link', 'links');
+    graphSummary = t('count.beans', { count: beans.length }) + ', ' + t('count.links', { count: edges.length });
     setStatus(graphSummary);
 
     graphLoaded = true;
     if (beans.length === 0) {
-        showCanvasMessage('No beans match these filters.');
+        showCanvasMessage(t('graph.empty'));
         updateCycleVisibility();
         return;
     }
 
     hideCanvasMessage();
-    setStatus('Laying out the graph…');
+    setStatus(t('status.layout'));
     // Раскладка занимает основной поток (на графе из ~200 бинов около 0.3 с).
     // Сначала даём браузеру отрисовать статус, потом считаем
     await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -345,10 +340,19 @@ function isInjection(edge) {
     return !edge.kind || edge.kind === 'INJECTION';
 }
 
+// Подпись типа связи: constructor, field, declared in… Неизвестный сервером код показывается как есть
+function linkTypeLabel(code) {
+    return code && IocI18n.has('link.' + code) ? t('link.' + code) : '';
+}
+
 function linkLabel(edge) {
     return isInjection(edge)
-        ? (LINK_LABELS[edge.injectionType] || '')
-        : (LINK_LABELS[edge.kind] || edge.kind);
+        ? linkTypeLabel(edge.injectionType)
+        : (linkTypeLabel(edge.kind) || edge.kind);
+}
+
+function stereotypeName(code) {
+    return t('stereotype.' + (STEREOTYPES[code] ? code : 'UNKNOWN'));
 }
 
 // Выбор бина и подсветка его соседей
@@ -452,7 +456,7 @@ function closeDetailsPanel() {
 // Пакет приглушён, простое имя класса выделено. Переносы строк — только после точек
 function classLine(fullClassName) {
     const line = el('p', 'bean-class');
-    const name = fullClassName || 'Unknown class';
+    const name = fullClassName || t('bean.unknownClass');
     const dot = name.lastIndexOf('.');
     if (dot > 0) {
         name.slice(0, dot + 1).split(/(?<=\.)/).forEach(part => line.append(part, document.createElement('wbr')));
@@ -466,16 +470,16 @@ function classLine(fullClassName) {
 function chips(bean) {
     const container = el('div', 'chips');
 
-    const stereotype = el('span', 'chip', (STEREOTYPES[bean.stereotype] || STEREOTYPES.UNKNOWN).name);
+    const stereotype = el('span', 'chip', stereotypeName(bean.stereotype));
     if (!bean.isSystem && STEREOTYPES[bean.stereotype] && bean.stereotype !== 'UNKNOWN') {
         stereotype.dataset.stereotype = bean.stereotype;
     }
 
-    const scopeNames = { SINGLETON: 'Singleton', PROTOTYPE: 'Prototype' };
+    const knownScopes = ['SINGLETON', 'PROTOTYPE'];
     container.append(
         stereotype,
-        el('span', 'chip', scopeNames[bean.scope] || 'Unknown scope'),
-        el('span', 'chip', bean.isSystem ? 'Framework or library bean' : 'Application bean')
+        el('span', 'chip', knownScopes.includes(bean.scope) ? t('scope.' + bean.scope) : t('scope.unknown')),
+        el('span', 'chip', bean.isSystem ? t('bean.framework') : t('bean.application'))
     );
     return container;
 }
@@ -485,24 +489,24 @@ function linkSection(nodeId) {
     const directions = [
         {
             key: 'dependencies',
-            title: 'Depends on',
+            title: t('links.dependsOn'),
             edges: edgesDataSet.get({ filter: edge => edge.from === nodeId }),
             otherEnd: edge => edge.to,
-            empty: 'Doesn’t depend on other beans in this view.'
+            empty: t('links.noDependencies')
         },
         {
             key: 'dependents',
-            title: 'Used by',
+            title: t('links.usedBy'),
             edges: edgesDataSet.get({ filter: edge => edge.to === nodeId }),
             otherEnd: edge => edge.from,
-            empty: 'No bean in this view depends on it.'
+            empty: t('links.noDependents')
         }
     ];
 
     const section = el('section', 'links');
     const switcher = el('div', 'link-switch');
     switcher.setAttribute('role', 'group');
-    switcher.setAttribute('aria-label', 'Direction of links');
+    switcher.setAttribute('aria-label', t('links.direction'));
     const content = el('div');
 
     const buttons = directions.map(direction => {
@@ -546,7 +550,7 @@ function linkList(direction) {
             button.type = 'button';
             // В коде может быть интерфейс, а внедрена его реализация: тогда пишем, через какой тип
             const via = edge.declaredType && edge.declaredType !== edge.targetClass
-                ? ' · via ' + simpleClassName(edge.declaredType)
+                ? t('link.via', { type: simpleClassName(edge.declaredType) })
                 : '';
             const kind = el('span', 'link-kind', edge.label + via);
             if (via) {
@@ -569,26 +573,26 @@ function linkList(direction) {
 
 async function loadCycles() {
     const results = byId('cycleResults');
-    results.replaceChildren(el('p', 'cycle-note', 'Looking for cycles…'));
+    results.replaceChildren(el('p', 'cycle-note', t('cycles.loading')));
 
     try {
         const response = await fetch(CYCLES_URL);
         if (!response.ok) {
-            results.replaceChildren(el('p', 'cycle-note', 'Cycles not loaded: the server returned HTTP ' + response.status + '.'));
+            results.replaceChildren(el('p', 'cycle-note', t('cycles.failed', { status: response.status })));
             return;
         }
         const report = await response.json();
         renderCycles(report);
         showCycleBadge((report.moduleCycles || []).length + (report.beanCycles || []).length);
     } catch (error) {
-        results.replaceChildren(el('p', 'cycle-note', 'Can’t reach the application. Check that it is running.'));
+        results.replaceChildren(el('p', 'cycle-note', t('error.unreachable')));
     }
 }
 
 // Сколько циклов найдено, в заголовке панели. Красный, если циклы есть
 function showCycleBadge(count) {
     const badge = byId('cycleBadge');
-    badge.textContent = count > 0 ? plural(count, 'cycle', 'cycles') : 'No cycles';
+    badge.textContent = count > 0 ? t('count.cycles', { count }) : t('cycles.none');
     badge.toggleAttribute('data-found', count > 0);
     badge.hidden = false;
 }
@@ -602,18 +606,18 @@ function renderCycles(report) {
     const results = byId('cycleResults');
 
     if (moduleCycles.length === 0 && beanCycles.length === 0) {
-        results.replaceChildren(el('p', 'cycle-note', 'No cycles found.'));
+        results.replaceChildren(el('p', 'cycle-note', t('cycles.noneFound')));
         return;
     }
 
     const parts = [];
     if (moduleCycles.length > 0) {
-        const group = cycleGroup('Between modules', moduleCycles.map(moduleCycleItem));
-        group.append(el('p', 'hint', 'Usually the direction with the fewest links is the one to remove.'));
+        const group = cycleGroup(t('cycles.betweenModules'), moduleCycles.map(moduleCycleItem));
+        group.append(el('p', 'hint', t('cycles.moduleHint')));
         parts.push(group);
     }
     if (beanCycles.length > 0) {
-        parts.push(cycleGroup('Between beans', beanCycles.map(beanCycleItem)));
+        parts.push(cycleGroup(t('cycles.betweenBeans'), beanCycles.map(beanCycleItem)));
     }
     results.replaceChildren(...parts);
     updateCycleVisibility();
@@ -641,10 +645,10 @@ function moduleCycleItem(cycle, index) {
         const button = cycleButton('module-' + index + '-' + linkIndex,
             shortModule(link.from) + ' → ' + shortModule(link.to),
             cycleTarget(link.edges), link.from + ' → ' + link.to);
-        const count = el('span', 'cycle-count', plural(link.count, 'link', 'links'));
+        const count = el('span', 'cycle-count', t('count.links', { count: link.count }));
         const next = cycle.links[linkIndex + 1];
         if (linkIndex === 0 && next && link.count < next.count) {
-            count.prepend(el('span', 'cycle-flag', 'fewest'));
+            count.prepend(el('span', 'cycle-flag', t('cycles.fewest')));
         }
         button.append(count);
 
@@ -660,7 +664,9 @@ function beanCycleItem(cycle, index) {
     const item = el('li');
     const shown = cycle.beans.slice(0, 3);
     const rest = cycle.beans.length - shown.length;
-    const label = joinCycle(shown) + (rest > 0 ? ' and ' + rest + ' more' : '');
+    const label = rest > 0
+        ? t('cycles.andMore', { names: joinCycle(shown), count: rest })
+        : joinCycle(shown);
     item.append(cycleButton('bean-' + index, label, cycleTarget(cycle.edges, cycle.beans), cycle.beans.join('\n'),
         { showVisibility: true }));
     return item;
@@ -722,7 +728,7 @@ function updateCycleVisibility() {
         if (!visibility) return;
         const total = target.nodes.length;
         const shown = target.nodes.filter(id => nodesDataSet.get(id) !== null).length;
-        visibility.textContent = shown === 0 ? 'hidden by filters' : shown + ' of ' + total + ' shown';
+        visibility.textContent = shown === 0 ? t('cycles.hidden') : t('cycles.shown', { shown, total });
         visibility.hidden = shown === total;
         button.classList.toggle('is-filtered-out', shown === 0);
     });
@@ -855,11 +861,11 @@ function findBean(event) {
 
     const matches = rankMatches(query);
     if (matches.length === 0) {
-        message.textContent = 'No bean matching “' + query + '” in this view.';
+        message.textContent = t('search.none', { query });
         return;
     }
 
-    message.textContent = matches.length > 1 ? matches.length + ' matches, showing ' + matches[0].id + '.' : '';
+    message.textContent = matches.length > 1 ? t('search.several', { count: matches.length, name: matches[0].id }) : '';
     selectBean(matches[0].id);
 }
 
@@ -929,7 +935,7 @@ function acceptCompletion() {
 
     const count = completion.matches.length;
     byId('searchMessage').textContent = count > 1
-        ? (completion.index + 1) + ' of ' + count + ' · Tab for next, Shift+Tab for previous'
+        ? t('search.next', { index: completion.index + 1, count })
         : '';
 }
 
@@ -1080,7 +1086,7 @@ function renderPackageGhost() {
     const count = packageCompletion.matches.length;
     const tail = match.full.slice(packageCompletion.query.length);
     message.textContent = (ghost.hidden ? 'Tab → …' + tail : match.pkg.slice(match.pkg.lastIndexOf('.') + 1))
-        + ' · ' + plural(match.count, 'bean', 'beans')
+        + ' · ' + t('count.beans', { count: match.count })
         + (count > 1 ? ' · ' + (packageCompletion.index + 1) + '/' + count + ' ↑↓' : '');
 }
 
@@ -1220,6 +1226,7 @@ function bindEvents() {
     updateResetButton();
 
     byId('fitBtn').addEventListener('click', fitGraph);
+    byId('languageBtn').addEventListener('click', IocI18n.switchLanguage);
     bindModuleFocusEvents();
 
     byId('detailsClose').addEventListener('click', closeDetails);
@@ -1240,10 +1247,6 @@ function el(tag, className, text) {
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
-}
-
-function plural(count, one, many) {
-    return count + ' ' + (count === 1 ? one : many);
 }
 
 function fitGraph() {

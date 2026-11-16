@@ -36,6 +36,14 @@ class UiResourcesTest {
                 .andExpect(status().isOk());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/ioc-visualizer/forceatlas2.js", "/ioc-visualizer/layout.js", "/ioc-visualizer/i18n.js",
+            "/ioc-visualizer/module-focus.js"})
+    void uiScriptsAreServedLocally(String url) throws Exception {
+        mvc.perform(get(url))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void indexDoesNotLoadScriptsFromCdn() throws Exception {
         mvc.perform(get("/ioc-visualizer/index.html"))

@@ -55,8 +55,10 @@ function enterModuleFocus(key, cycle) {
     network.fit();
 
     showFocusBanner(scheme.order);
-    setStatus('Module cycle: ' + plural(scheme.beanCount, 'bean', 'beans') + ', '
-        + plural(scheme.edges.length, 'link', 'links'));
+    setStatus(t('scheme.status', {
+        beans: t('count.beans', { count: scheme.beanCount }),
+        links: t('count.links', { count: scheme.edges.length })
+    }));
 }
 
 // restore: true — вернуть сохранённый граф. false — граф всё равно сейчас перезагрузится (смена фильтров)
@@ -103,9 +105,9 @@ function buildModuleScheme(cycle) {
     for (const link of cycle.links) {
         for (const edge of link.edges) {
             place(edge.source, link.from, edge.injectionType === 'FACTORY_METHOD'
-                ? 'its @Bean method is declared in ' + shortModule(link.from) : null);
+                ? t('scheme.declaredIn', { module: shortModule(link.from) }) : null);
             place(edge.target, link.to, edge.declaredType && edge.declaredType !== edge.target.fullClassName
-                ? 'injected as ' + simpleClassName(edge.declaredType) : null);
+                ? t('scheme.injectedAs', { type: simpleClassName(edge.declaredType) }) : null);
             edges.push({ edge, fromModule: link.from, toModule: link.to });
             connect(link.from + '|' + edge.source.id, link.to + '|' + edge.target.id);
             connect(link.to + '|' + edge.target.id, link.from + '|' + edge.source.id);
@@ -126,7 +128,8 @@ function buildModuleScheme(cycle) {
         member.nodeId = id;
         const node = { ...toVisNode(bean), id, x, y };
         if (placements.get(bean.id).size > 1 && reasons.size > 0) {
-            node.title = bean.fullClassName + '\nShown in ' + shortModule(cloud.module) + ': ' + [...reasons].join(', ');
+            node.title = bean.fullClassName + '\n'
+                + t('scheme.shownIn', { module: shortModule(cloud.module), reasons: [...reasons].join(', ') });
         }
         nodes.push(node);
     }));

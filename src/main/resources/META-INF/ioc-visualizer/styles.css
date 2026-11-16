@@ -96,6 +96,32 @@ h1 {
     letter-spacing: -0.01em;
 }
 
+/* Заголовок и кнопка языка в одной строке */
+.title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.language-button {
+    flex: none;
+    height: 26px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.language-button:hover {
+    color: var(--ink);
+    border-color: var(--faint);
+}
+
 h2 {
     margin: 0 0 10px;
     font-size: 13px;
