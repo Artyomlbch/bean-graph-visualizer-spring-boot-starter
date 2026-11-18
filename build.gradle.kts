@@ -29,6 +29,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-web")
     testImplementation("tools.jackson.dataformat:jackson-dataformat-xml")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.data:spring-data-keyvalue")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

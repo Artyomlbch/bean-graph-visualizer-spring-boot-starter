@@ -9,13 +9,18 @@ import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ClassUtils;
 
 import java.util.*;
 
 public class GraphFactory {
+
+    private static final String SPRING_DATA_REPOSITORY = "org.springframework.data.repository.Repository";
+    private static final String SPRING_DATA_REPOSITORY_DEFINITION = "org.springframework.data.repository.RepositoryDefinition";
 
     private final BeanMetadataRepository beanRepository;
     private final EdgeResolver edgeResolver;
@@ -88,14 +93,25 @@ public class GraphFactory {
         return new BeanNode(beanName, className, scope, isSystem, stereotype);
     }
 
-    // Поиск стереотипных аннотаций с учетом вложенных аннотаций
-    private static Stereotype detectStereotype(Class<?> beanClass) {
+    static Stereotype detectStereotype(Class<?> beanClass) {
         if (AnnotatedElementUtils.hasAnnotation(beanClass, Controller.class)) return Stereotype.CONTROLLER;
         if (AnnotatedElementUtils.hasAnnotation(beanClass, Service.class)) return Stereotype.SERVICE;
         if (AnnotatedElementUtils.hasAnnotation(beanClass, Repository.class)) return Stereotype.REPOSITORY;
         if (AnnotatedElementUtils.hasAnnotation(beanClass, Configuration.class)) return Stereotype.CONFIGURATION;
+        if (isSpringDataRepository(beanClass)) return Stereotype.REPOSITORY;
         return Stereotype.UNKNOWN;
     }
+
+    static boolean isSpringDataRepository(Class<?> beanClass) {
+        // @RepositoryDefinition на самом типе или на его родителях и интерфейсах
+        if (MergedAnnotations.from(beanClass, MergedAnnotations.SearchStrategy.TYPE_HIERARCHY)
+                .isPresent(SPRING_DATA_REPOSITORY_DEFINITION)) return true;
+        ClassLoader loader = beanClass.getClassLoader();
+        // ClassUtils.isPresent возвращает класс, если он загружен (если подключен Spring Data)
+        return ClassUtils.isPresent(SPRING_DATA_REPOSITORY, loader)
+                && ClassUtils.resolveClassName(SPRING_DATA_REPOSITORY, loader).isAssignableFrom(beanClass);
+    }
+
 
     private boolean isSystemBean(String className, int role) {
         if (className == null || "Unknown".equals(className)) return true;
