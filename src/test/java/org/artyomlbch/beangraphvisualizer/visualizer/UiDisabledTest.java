@@ -32,8 +32,8 @@ class UiDisabledTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "/ioc-visualizer/index.html",
-            "/ioc-visualizer/app.js",
-            "/ioc-visualizer/vis-network.min.js",
+            "/ioc-visualizer/js/app.js",
+            "/ioc-visualizer/vendor/vis-network.min.js",
             "/ioc-visualizer/"
     })
     void uiIsNotServed(String url) throws Exception {

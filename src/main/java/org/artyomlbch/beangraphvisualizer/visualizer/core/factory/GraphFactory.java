@@ -107,7 +107,7 @@ public class GraphFactory {
         if (MergedAnnotations.from(beanClass, MergedAnnotations.SearchStrategy.TYPE_HIERARCHY)
                 .isPresent(SPRING_DATA_REPOSITORY_DEFINITION)) return true;
         ClassLoader loader = beanClass.getClassLoader();
-        // ClassUtils.isPresent возвращает класс, если он загружен (если подключен Spring Data)
+        // ClassUtils.isPresent возвращает true, если класс можно загрузить через переданный загрузчик(если подключен Spring Data)
         return ClassUtils.isPresent(SPRING_DATA_REPOSITORY, loader)
                 && ClassUtils.resolveClassName(SPRING_DATA_REPOSITORY, loader).isAssignableFrom(beanClass);
     }
