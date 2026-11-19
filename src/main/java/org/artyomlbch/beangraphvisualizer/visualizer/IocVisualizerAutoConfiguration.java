@@ -3,11 +3,12 @@ package org.artyomlbch.beangraphvisualizer.visualizer;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.AnalysisController;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.ApiExceptionHandler;
 import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleResolver;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.BeanCycleFinder;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleCycleFinder;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.FilterPipelineFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.GraphFactory;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.initializer.GraphInitializer;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadataRepository;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.impl.BeanFactoryMetadataRepository;
@@ -20,7 +21,6 @@ import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
 import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -49,9 +49,14 @@ public class IocVisualizerAutoConfiguration {
     }
 
     @Bean
+    ApplicationPackages iocVisualizerApplicationPackages(ApplicationContext context) {
+        return ApplicationPackages.of(context);
+    }
+
+    @Bean
     GraphFactory iocVisualizerGraphFactory(BeanMetadataRepository metadataRepository,
-                                           ApplicationContext context) {
-        return new GraphFactory(metadataRepository, context);
+                                           ApplicationPackages applicationPackages) {
+        return new GraphFactory(metadataRepository, applicationPackages);
     }
 
     @Bean
@@ -97,17 +102,20 @@ public class IocVisualizerAutoConfiguration {
     }
 
     @Bean
-    CycleAnalyzer iocVisualizerCycleAnalyzer(ApplicationContext context) {
-        List<String> applicationPackages = AutoConfigurationPackages.has(context)
-                ? AutoConfigurationPackages.get(context)
-                : List.of();
-        return new CycleAnalyzer(new ModuleResolver(applicationPackages));
+    BeanCycleFinder iocVisualizerBeanCycleFinder() {
+        return new BeanCycleFinder();
+    }
+
+    @Bean
+    ModuleCycleFinder iocVisualizerModuleCycleFinder(ApplicationPackages applicationPackages) {
+        return new ModuleCycleFinder(applicationPackages);
     }
 
     @Bean
     AnalysisService iocVisualizerAnalysisService(GraphRepository graphRepository,
-                                                 CycleAnalyzer cycleAnalyzer) {
-        return new AnalysisService(graphRepository, cycleAnalyzer);
+                                                 BeanCycleFinder beanCycleFinder,
+                                                 ModuleCycleFinder moduleCycleFinder) {
+        return new AnalysisService(graphRepository, beanCycleFinder, moduleCycleFinder);
     }
 
     @Bean

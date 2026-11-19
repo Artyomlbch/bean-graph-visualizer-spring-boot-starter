@@ -1,9 +1,11 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.service;
 
-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleResolver;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.BeanCycleFinder;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleCycleFinder;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.impl.InMemoryGraphRepository;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
 import org.artyomlbch.beangraphvisualizer.visualizer.service.AnalysisService;
 import org.junit.jupiter.api.Test;
@@ -16,19 +18,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AnalysisServiceTest {
 
-    // считает, сколько раз запускался анализ
-    private static final class CountingAnalyzer extends CycleAnalyzer {
+    // считает, сколько раз запускался поиск циклов
+    private static final class CountingBeanCycleFinder extends BeanCycleFinder {
         int calls;
 
-        CountingAnalyzer() {
-            super(new ModuleResolver(List.of()));
-        }
-
         @Override
-        public CycleReport analyze(BeanGraph graph) {
+        public List<BeanCycle> find(BeanGraph graph) {
             calls++;
-            return super.analyze(graph);
+            return super.find(graph);
         }
+    }
+
+    private static AnalysisService service(InMemoryGraphRepository repository, BeanCycleFinder finder) {
+        return new AnalysisService(repository, finder, new ModuleCycleFinder(new ApplicationPackages(List.of())));
     }
 
     private static BeanGraph cyclicGraph() {
@@ -43,13 +45,13 @@ class AnalysisServiceTest {
     void analysesTheGraphOnlyOnce() {
         InMemoryGraphRepository repository = new InMemoryGraphRepository();
         repository.write(cyclicGraph());
-        CountingAnalyzer analyzer = new CountingAnalyzer();
-        AnalysisService service = new AnalysisService(repository, analyzer);
+        CountingBeanCycleFinder finder = new CountingBeanCycleFinder();
+        AnalysisService service = service(repository, finder);
 
         CycleReport first = service.findCycles();
         CycleReport second = service.findCycles();
 
-        assertThat(analyzer.calls).isEqualTo(1);
+        assertThat(finder.calls).isEqualTo(1);
         assertThat(second).isSameAs(first);
         assertThat(first.beanCycles()).hasSize(1);
     }
@@ -58,14 +60,14 @@ class AnalysisServiceTest {
     void analysesAgainWhenTheGraphIsReplaced() {
         InMemoryGraphRepository repository = new InMemoryGraphRepository();
         repository.write(cyclicGraph());
-        CountingAnalyzer analyzer = new CountingAnalyzer();
-        AnalysisService service = new AnalysisService(repository, analyzer);
+        CountingBeanCycleFinder finder = new CountingBeanCycleFinder();
+        AnalysisService service = service(repository, finder);
         service.findCycles();
 
         repository.write(graph().with(user("a"), user("b")).edge("a", "b").build());
         CycleReport report = service.findCycles();
 
-        assertThat(analyzer.calls).isEqualTo(2);
+        assertThat(finder.calls).isEqualTo(2);
         assertThat(report.beanCycles()).isEmpty();
     }
 }

@@ -1,12 +1,11 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.factory;
 
+import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadataRepository;
 import org.artyomlbch.beangraphvisualizer.visualizer.core.resolver.EdgeResolver;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.*;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
 import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.MergedAnnotations;
@@ -24,14 +23,12 @@ public class GraphFactory {
 
     private final BeanMetadataRepository beanRepository;
     private final EdgeResolver edgeResolver;
-    private final List<String> userPackages;
+    private final ApplicationPackages applicationPackages;
 
-    public GraphFactory(BeanMetadataRepository beanRepository, ApplicationContext context) {
+    public GraphFactory(BeanMetadataRepository beanRepository, ApplicationPackages applicationPackages) {
         this.beanRepository = beanRepository;
         this.edgeResolver = new EdgeResolver(beanRepository);
-        this.userPackages = AutoConfigurationPackages.has(context)
-                ? AutoConfigurationPackages.get(context)
-                : List.of();
+        this.applicationPackages = applicationPackages;
     }
 
     public BeanGraph newInstance() {
@@ -112,24 +109,10 @@ public class GraphFactory {
                 && ClassUtils.resolveClassName(SPRING_DATA_REPOSITORY, loader).isAssignableFrom(beanClass);
     }
 
-
     private boolean isSystemBean(String className, int role) {
         if (className == null || "Unknown".equals(className)) return true;
         if (role == BeanDefinition.ROLE_INFRASTRUCTURE || role == BeanDefinition.ROLE_SUPPORT) return true;
 
-        return !belongsToPackages(className, userPackages);
-    }
-
-    /**
-     * Определяет, лежит ла класс в одном из пакетов или подпакетах
-     * Без модификатора доступа, чтобы его мог использовать тест,
-     * у которого пакет тоже core.factory, сам стартер его видеть не будет
-     * TODO: может, стоит убрать метод отсюда
-     */
-    static boolean belongsToPackages(String className, List<String> packages) {
-        return packages.stream()
-                .anyMatch(pkg -> pkg.isEmpty()
-                        || className.startsWith(pkg + ".")
-                );
+        return !applicationPackages.contains(className);
     }
 }

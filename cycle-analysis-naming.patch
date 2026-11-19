@@ -1,0 +1,1310 @@
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/IocVisualizerAutoConfiguration.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/IocVisualizerAutoConfiguration.java
+index 8748a38..c860c3d 100644
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/IocVisualizerAutoConfiguration.java
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/IocVisualizerAutoConfiguration.java
+@@ -3,11 +3,12 @@ package org.artyomlbch.beangraphvisualizer.visualizer;
+ import org.artyomlbch.beangraphvisualizer.visualizer.api.AnalysisController;
+ import org.artyomlbch.beangraphvisualizer.visualizer.api.ApiExceptionHandler;
+ import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
+-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
+-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleResolver;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.BeanCycleFinder;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleCycleFinder;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.FilterPipelineFactory;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.factory.GraphFactory;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.initializer.GraphInitializer;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadataRepository;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.impl.BeanFactoryMetadataRepository;
+@@ -20,7 +21,6 @@ import org.artyomlbch.beangraphvisualizer.visualizer.service.GraphService;
+ import org.artyomlbch.beangraphvisualizer.visualizer.service.SerializerService;
+ import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
+ import org.springframework.boot.autoconfigure.AutoConfiguration;
+-import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
+ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+@@ -48,10 +48,15 @@ public class IocVisualizerAutoConfiguration {
+         return new InMemoryGraphRepository();
+     }
+ 
++    @Bean
++    ApplicationPackages iocVisualizerApplicationPackages(ApplicationContext context) {
++        return ApplicationPackages.of(context);
++    }
++
+     @Bean
+     GraphFactory iocVisualizerGraphFactory(BeanMetadataRepository metadataRepository,
+-                                           ApplicationContext context) {
+-        return new GraphFactory(metadataRepository, context);
++                                           ApplicationPackages applicationPackages) {
++        return new GraphFactory(metadataRepository, applicationPackages);
+     }
+ 
+     @Bean
+@@ -97,17 +102,20 @@ public class IocVisualizerAutoConfiguration {
+     }
+ 
+     @Bean
+-    CycleAnalyzer iocVisualizerCycleAnalyzer(ApplicationContext context) {
+-        List<String> applicationPackages = AutoConfigurationPackages.has(context)
+-                ? AutoConfigurationPackages.get(context)
+-                : List.of();
+-        return new CycleAnalyzer(new ModuleResolver(applicationPackages));
++    BeanCycleFinder iocVisualizerBeanCycleFinder() {
++        return new BeanCycleFinder();
++    }
++
++    @Bean
++    ModuleCycleFinder iocVisualizerModuleCycleFinder(ApplicationPackages applicationPackages) {
++        return new ModuleCycleFinder(applicationPackages);
+     }
+ 
+     @Bean
+     AnalysisService iocVisualizerAnalysisService(GraphRepository graphRepository,
+-                                                 CycleAnalyzer cycleAnalyzer) {
+-        return new AnalysisService(graphRepository, cycleAnalyzer);
++                                                 BeanCycleFinder beanCycleFinder,
++                                                 ModuleCycleFinder moduleCycleFinder) {
++        return new AnalysisService(graphRepository, beanCycleFinder, moduleCycleFinder);
+     }
+ 
+     @Bean
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponents.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponents.java
+new file mode 100644
+index 0000000..9e62238
+--- /dev/null
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponents.java
+@@ -0,0 +1,84 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.algorithm;
++
++import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Collection;
++import java.util.Deque;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++// Компоненты сильной связности ориентированного графа, алгоритм Тарьяна.
++// Компонента - наибольшее множество вершин, в котором из любой вершины можно дойти до любой другой.
++// Каждая вершина графа попадает ровно в одну компоненту, одиночная вершина - тоже компонента.
++// Что считать циклом (например, компоненту из двух и больше вершин), решает вызывающий код.
++// Про бины и Spring класс ничего не знает: T - тип вершины
++public final class StronglyConnectedComponents<T> {
++
++    // граф: вершина -> вершины, в которые из нее ведут ребра
++    private final Map<T, ? extends Collection<T>> graph;
++
++    private final Map<T, Integer> index = new HashMap<>();
++    private final Map<T, Integer> lowLink = new HashMap<>();
++
++    private final Deque<T> stack = new ArrayDeque<>();
++    private final Set<T> onStack = new HashSet<>();
++
++    private final List<Set<T>> components = new ArrayList<>();
++    private int counter = 0;
++
++    private StronglyConnectedComponents(Map<T, ? extends Collection<T>> graph) {
++        this.graph = graph;
++    }
++
++    // Все компоненты графа. Вершины, которые встречаются только как концы рёбер,
++    // тоже учитываются
++    public static <T> List<Set<T>> find(Map<T, ? extends Collection<T>> graph) {
++        StronglyConnectedComponents<T> search = new StronglyConnectedComponents<>(graph);
++        for (T vertex : graph.keySet()) {
++            if (!search.index.containsKey(vertex)) {
++                search.visit(vertex);
++            }
++        }
++        return search.components;
++    }
++
++    private void visit(T vertex) {
++        index.put(vertex, counter);
++        lowLink.put(vertex, counter);
++
++        counter++;
++
++        stack.push(vertex);
++        onStack.add(vertex);
++
++        Collection<T> next = graph.get(vertex);
++        if (next != null) {
++            for (T target : next) {
++                if (!index.containsKey(target)) {
++                    visit(target);
++                    lowLink.put(vertex, Math.min(lowLink.get(vertex), lowLink.get(target)));
++                } else if (onStack.contains(target)) {
++                    lowLink.put(vertex, Math.min(lowLink.get(vertex), index.get(target)));
++                }
++            }
++        }
++
++        // вершина - корень компоненты: снимаем со стека всю компоненту
++        if (lowLink.get(vertex).equals(index.get(vertex))) {
++            Set<T> component = new LinkedHashSet<>();
++
++            T member;
++            do {
++                member = stack.pop();
++                onStack.remove(member);
++                component.add(member);
++            } while (!member.equals(vertex));
++
++            components.add(component);
++        }
++    }
++}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinder.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinder.java
+new file mode 100644
+index 0000000..2b64ceb
+--- /dev/null
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinder.java
+@@ -0,0 +1,46 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
++
++import org.artyomlbch.beangraphvisualizer.visualizer.algorithm.StronglyConnectedComponents;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
++
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++// Циклы между бинами: компоненты сильной связности графа зависимостей бинов из двух и больше бинов.
++// Учитываются все виды рёбер, в том числе DECLARED_IN и DEPENDS_ON
++public class BeanCycleFinder {
++
++    private static final Comparator<BeanCycle> LARGEST_FIRST =
++            Comparator.comparingInt((BeanCycle cycle) -> cycle.beans().size()).reversed()
++                    .thenComparing(cycle -> cycle.beans().getFirst());
++
++    // первыми идут самые большие циклы
++    public List<BeanCycle> find(BeanGraph graph) {
++        Map<String, Set<String>> dependencies = new LinkedHashMap<>();
++        for (BeanEdge edge : graph.getEdges()) {
++            dependencies.computeIfAbsent(edge.source().id(), id -> new LinkedHashSet<>())
++                    .add(edge.target().id());
++        }
++
++        List<BeanCycle> cycles = new ArrayList<>();
++        for (Set<String> beans : StronglyConnectedComponents.find(dependencies)) {
++            // одиночный бин циклом не считается
++            if (beans.size() < 2) {
++                continue;
++            }
++            List<BeanEdge> inside = graph.getEdges().stream()
++                    .filter(edge -> beans.contains(edge.source().id()) && beans.contains(edge.target().id()))
++                    .toList();
++            cycles.add(new BeanCycle(beans.stream().sorted().toList(), inside));
++        }
++        cycles.sort(LARGEST_FIRST);
++        return cycles;
++    }
++}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetector.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetector.java
+deleted file mode 100644
+index 8dd434c..0000000
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetector.java
++++ /dev/null
+@@ -1,74 +0,0 @@
+-package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+-
+-import java.util.*;
+-
+-// поиск циклов в графе при помощи
+-// алгоритма Тарьяна
+-// T - тип вершины
+-public final class CycleDetector<T> {
+-
+-    // граф, вершина - коллекция вершин, в которые из нее ведут ребра
+-    private final Map<T, ? extends Collection<T>> graph;
+-
+-    private final Map<T, Integer> index = new HashMap<>();
+-    private final Map<T, Integer> lowLink = new HashMap<>();
+-
+-    private final Deque<T> stack = new ArrayDeque<>();
+-    private final Set<T> onStack = new HashSet<>();
+-
+-    private final List<Set<T>> cycles = new ArrayList<>();
+-    private int counter = 0;
+-
+-    private CycleDetector(Map<T, ? extends Collection<T>> graph) {
+-        this.graph = graph;
+-    }
+-
+-    // возвращает компоненты сильной связности из >=2 вершин
+-    public static <T> List<Set<T>> findCycles(Map<T, ? extends Collection<T>> graph) {
+-        CycleDetector<T> detector = new CycleDetector<>(graph);
+-        for (T vertex : graph.keySet()) {
+-            if (!detector.index.containsKey(vertex)) {
+-                detector.visit(vertex);
+-            }
+-        }
+-        return detector.cycles;
+-    }
+-
+-    private void visit(T vertex) {
+-        index.put(vertex, counter);
+-        lowLink.put(vertex, counter);
+-
+-        counter++;
+-
+-        stack.push(vertex);
+-        onStack.add(vertex);
+-
+-        Collection<T> next =  graph.get(vertex);
+-        if (next != null) {
+-            for (T target : next) {
+-                if (!index.containsKey(target)) {
+-                    visit(target);
+-                    lowLink.put(vertex, Math.min(lowLink.get(vertex), lowLink.get(target)));
+-                } else if (onStack.contains(target)) {
+-                    lowLink.put(vertex, Math.min(lowLink.get(vertex), index.get(target)));
+-                }
+-            }
+-        }
+-
+-        // определение начала цикла и сбор нод цикла
+-        if (lowLink.get(vertex).equals(index.get(vertex))) {
+-            Set<T> component = new LinkedHashSet<>();
+-
+-            T member;
+-            do {
+-                member = stack.pop();
+-                onStack.remove(member);
+-                component.add(member);
+-            } while (!member.equals(vertex));
+-
+-            if (component.size() > 1) {
+-                cycles.add(component);
+-            }
+-        }
+-    }
+-}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzer.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinder.java
+similarity index 63%
+rename from src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzer.java
+rename to src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinder.java
+index 51e91c3..077e9ff 100644
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzer.java
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinder.java
+@@ -1,12 +1,12 @@
+ package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+ 
++import org.artyomlbch.beangraphvisualizer.visualizer.algorithm.StronglyConnectedComponents;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.EdgeKind;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
+-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
+-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleCycle;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleLink;
+ 
+@@ -14,20 +14,17 @@ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+-import java.util.LinkedHashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import java.util.TreeMap;
+ 
+-// ищет циклы между бинами и между модулями приложения
+-public class CycleAnalyzer {
++// Циклы между модулями приложения. Модуль - первый подпакет пакета приложения (ApplicationPackages).
++// Модуль A зависит от модуля B, если код класса из A получает бин, тип которого объявлен в B.
++// Считаются только внедрения (INJECTION): DECLARED_IN и DEPENDS_ON зависимостями кода не являются
++public class ModuleCycleFinder {
+ 
+-    private static final Comparator<BeanCycle> LARGEST_BEAN_CYCLE_FIRST =
+-            Comparator.comparingInt((BeanCycle cycle) -> cycle.beans().size()).reversed()
+-                    .thenComparing(cycle -> cycle.beans().getFirst());
+-
+-    private static final Comparator<ModuleCycle> LARGEST_MODULE_CYCLE_FIRST =
++    private static final Comparator<ModuleCycle> LARGEST_FIRST =
+             Comparator.comparingInt((ModuleCycle cycle) -> cycle.modules().size()).reversed()
+                     .thenComparing(cycle -> cycle.modules().getFirst());
+ 
+@@ -36,35 +33,14 @@ public class CycleAnalyzer {
+                     .thenComparing(ModuleLink::from)
+                     .thenComparing(ModuleLink::to);
+ 
+-    private final ModuleResolver modules;
+-
+-    public CycleAnalyzer(ModuleResolver modules) {
+-        this.modules = modules;
+-    }
++    private final ApplicationPackages packages;
+ 
+-    public CycleReport analyze(BeanGraph graph) {
+-        return new CycleReport(beanCycles(graph), moduleCycles(graph));
++    public ModuleCycleFinder(ApplicationPackages packages) {
++        this.packages = packages;
+     }
+ 
+-    List<BeanCycle> beanCycles(BeanGraph graph) {
+-        Map<String, Set<String>> dependencies = new LinkedHashMap<>();
+-        for (BeanEdge edge : graph.getEdges()) {
+-            dependencies.computeIfAbsent(edge.source().id(), id -> new LinkedHashSet<>())
+-                    .add(edge.target().id());
+-        }
+-
+-        List<BeanCycle> cycles = new ArrayList<>();
+-        for (Set<String> beans : CycleDetector.findCycles(dependencies)) {
+-            List<BeanEdge> inside = graph.getEdges().stream()
+-                    .filter(edge -> beans.contains(edge.source().id()) && beans.contains(edge.target().id()))
+-                    .toList();
+-            cycles.add(new BeanCycle(beans.stream().sorted().toList(), inside));
+-        }
+-        cycles.sort(LARGEST_BEAN_CYCLE_FIRST);
+-        return cycles;
+-    }
+-
+-    List<ModuleCycle> moduleCycles(BeanGraph graph) {
++    // первыми идут самые большие циклы, связи внутри цикла - от самой слабой
++    public List<ModuleCycle> find(BeanGraph graph) {
+         Map<String, BeanNode> declaringConfiguration = new HashMap<>();
+         for (BeanEdge edge : graph.getEdges()) {
+             if (edge.kind() == EdgeKind.DECLARED_IN) {
+@@ -79,8 +55,8 @@ public class CycleAnalyzer {
+                 continue;
+             }
+ 
+-            String from = modules.moduleOf(codeOwner(edge, declaringConfiguration).fullClassName());
+-            String to = modules.moduleOf(edge.declaredType() != null
++            String from = packages.moduleOf(codeOwner(edge, declaringConfiguration).fullClassName());
++            String to = packages.moduleOf(edge.declaredType() != null
+                     ? edge.declaredType()
+                     : edge.target().fullClassName());
+             if (from == null || to == null || from.equals(to)) {
+@@ -96,7 +72,11 @@ public class CycleAnalyzer {
+         links.forEach((from, targets) -> dependencies.put(from, targets.keySet()));
+ 
+         List<ModuleCycle> cycles = new ArrayList<>();
+-        for (Set<String> cycleModules : CycleDetector.findCycles(dependencies)) {
++        for (Set<String> cycleModules : StronglyConnectedComponents.find(dependencies)) {
++            // одиночный модуль циклом не считается
++            if (cycleModules.size() < 2) {
++                continue;
++            }
+             List<ModuleLink> inside = new ArrayList<>();
+             links.forEach((from, targets) -> targets.forEach((to, edges) -> {
+                 if (cycleModules.contains(from) && cycleModules.contains(to)) {
+@@ -106,7 +86,7 @@ public class CycleAnalyzer {
+             inside.sort(WEAKEST_LINK_FIRST);
+             cycles.add(new ModuleCycle(cycleModules.stream().sorted().toList(), inside));
+         }
+-        cycles.sort(LARGEST_MODULE_CYCLE_FIRST);
++        cycles.sort(LARGEST_FIRST);
+         return cycles;
+     }
+ 
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolver.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolver.java
+deleted file mode 100644
+index d057b17..0000000
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolver.java
++++ /dev/null
+@@ -1,33 +0,0 @@
+-package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+-
+-import org.jspecify.annotations.Nullable;
+-
+-import java.util.Comparator;
+-import java.util.List;
+-
+-public class ModuleResolver {
+-
+-    private final List<String> applicationPackages;
+-
+-    public ModuleResolver(List<String> applicationPackages) {
+-        // если один основной пакет вложен в другой, сначала проверяется более длинный
+-        this.applicationPackages = applicationPackages.stream()
+-                .sorted(Comparator.comparingInt(String::length).reversed())
+-                .toList();
+-    }
+-
+-    public @Nullable String moduleOf(String className) {
+-        for (String base : applicationPackages) {
+-            String prefix = base.isEmpty() ? "" : base + ".";
+-            if (!className.startsWith(prefix)) {
+-                continue;
+-            }
+-
+-            String rest = className.substring(prefix.length());
+-            int dot = rest.indexOf('.');
+-            // если точки нет, то класс лежит прямо в основном пакете
+-            return (dot < 0) ? null : prefix + rest.substring(0, dot);
+-        }
+-        return null;
+-    }
+-}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/GraphFactory.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/GraphFactory.java
+index 1ee7d05..16973dc 100644
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/GraphFactory.java
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/GraphFactory.java
+@@ -1,12 +1,11 @@
+ package org.artyomlbch.beangraphvisualizer.visualizer.core.factory;
+ 
++import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.BeanMetadataRepository;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.resolver.EdgeResolver;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.*;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
+ import org.springframework.beans.factory.config.BeanDefinition;
+-import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
+-import org.springframework.context.ApplicationContext;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.core.annotation.AnnotatedElementUtils;
+ import org.springframework.core.annotation.MergedAnnotations;
+@@ -24,14 +23,12 @@ public class GraphFactory {
+ 
+     private final BeanMetadataRepository beanRepository;
+     private final EdgeResolver edgeResolver;
+-    private final List<String> userPackages;
++    private final ApplicationPackages applicationPackages;
+ 
+-    public GraphFactory(BeanMetadataRepository beanRepository, ApplicationContext context) {
++    public GraphFactory(BeanMetadataRepository beanRepository, ApplicationPackages applicationPackages) {
+         this.beanRepository = beanRepository;
+         this.edgeResolver = new EdgeResolver(beanRepository);
+-        this.userPackages = AutoConfigurationPackages.has(context)
+-                ? AutoConfigurationPackages.get(context)
+-                : List.of();
++        this.applicationPackages = applicationPackages;
+     }
+ 
+     public BeanGraph newInstance() {
+@@ -112,24 +109,10 @@ public class GraphFactory {
+                 && ClassUtils.resolveClassName(SPRING_DATA_REPOSITORY, loader).isAssignableFrom(beanClass);
+     }
+ 
+-
+     private boolean isSystemBean(String className, int role) {
+         if (className == null || "Unknown".equals(className)) return true;
+         if (role == BeanDefinition.ROLE_INFRASTRUCTURE || role == BeanDefinition.ROLE_SUPPORT) return true;
+ 
+-        return !belongsToPackages(className, userPackages);
+-    }
+-
+-    /**
+-     * Определяет, лежит ла класс в одном из пакетов или подпакетах
+-     * Без модификатора доступа, чтобы его мог использовать тест,
+-     * у которого пакет тоже core.factory, сам стартер его видеть не будет
+-     * TODO: может, стоит убрать метод отсюда
+-     */
+-    static boolean belongsToPackages(String className, List<String> packages) {
+-        return packages.stream()
+-                .anyMatch(pkg -> pkg.isEmpty()
+-                        || className.startsWith(pkg + ".")
+-                );
++        return !applicationPackages.contains(className);
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackages.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackages.java
+new file mode 100644
+index 0000000..4018848
+--- /dev/null
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackages.java
+@@ -0,0 +1,63 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.core.packages;
++
++import org.jspecify.annotations.Nullable;
++import org.springframework.beans.factory.BeanFactory;
++import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
++
++import java.util.Comparator;
++import java.util.List;
++
++// Пакеты приложения: пакет класса с @SpringBootApplication и другие пакеты из @AutoConfigurationPackage.
++// Отвечает на два вопроса: лежит ли класс в приложении и к какому модулю он относится.
++// Модуль - первый подпакет пакета приложения: для com.example.app.orders.internal.OrderRepository
++// это com.example.app.orders
++public final class ApplicationPackages {
++
++    private final List<String> packages;
++
++    // если один пакет приложения вложен в другой, сначала проверяется более длинный
++    private final List<String> longestFirst;
++
++    public ApplicationPackages(List<String> packages) {
++        this.packages = List.copyOf(packages);
++        this.longestFirst = this.packages.stream()
++                .sorted(Comparator.comparingInt(String::length).reversed())
++                .toList();
++    }
++
++    // Пакеты, которые Spring Boot запомнил при старте. В контексте без Spring Boot их нет,
++    // и тогда ни один класс не считается классом приложения
++    public static ApplicationPackages of(BeanFactory beanFactory) {
++        return new ApplicationPackages(AutoConfigurationPackages.has(beanFactory)
++                ? AutoConfigurationPackages.get(beanFactory)
++                : List.of());
++    }
++
++    public List<String> packages() {
++        return packages;
++    }
++
++    // Лежит ли класс в одном из пакетов приложения или в их подпакетах.
++    // Пакет сравнивается вместе с точкой, иначе com.foobar считался бы частью com.foo.
++    // Пустой пакет (приложение без package) содержит все классы
++    public boolean contains(String className) {
++        return packages.stream()
++                .anyMatch(pkg -> pkg.isEmpty() || className.startsWith(pkg + "."));
++    }
++
++    // Модуль класса или null, если класс лежит вне приложения или прямо в пакете приложения
++    public @Nullable String moduleOf(String className) {
++        for (String base : longestFirst) {
++            String prefix = base.isEmpty() ? "" : base + ".";
++            if (!className.startsWith(prefix)) {
++                continue;
++            }
++
++            String rest = className.substring(prefix.length());
++            int dot = rest.indexOf('.');
++            // если точки нет, то класс лежит прямо в основном пакете
++            return (dot < 0) ? null : prefix + rest.substring(0, dot);
++        }
++        return null;
++    }
++}
+diff --git a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/service/AnalysisService.java b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/service/AnalysisService.java
+index a4fd7ce..ac98201 100644
+--- a/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/service/AnalysisService.java
++++ b/src/main/java/org/artyomlbch/beangraphvisualizer/visualizer/service/AnalysisService.java
+@@ -1,6 +1,7 @@
+ package org.artyomlbch.beangraphvisualizer.visualizer.service;
+ 
+-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.BeanCycleFinder;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleCycleFinder;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
+@@ -17,12 +18,15 @@ public class AnalysisService {
+     }
+ 
+     private final GraphRepository graphRepository;
+-    private final CycleAnalyzer cycleAnalyzer;
++    private final BeanCycleFinder beanCycleFinder;
++    private final ModuleCycleFinder moduleCycleFinder;
+     private volatile CachedReport cached;
+ 
+-    public AnalysisService(GraphRepository graphRepository, CycleAnalyzer cycleAnalyzer) {
++    public AnalysisService(GraphRepository graphRepository, BeanCycleFinder beanCycleFinder,
++                           ModuleCycleFinder moduleCycleFinder) {
+         this.graphRepository = graphRepository;
+-        this.cycleAnalyzer = cycleAnalyzer;
++        this.beanCycleFinder = beanCycleFinder;
++        this.moduleCycleFinder = moduleCycleFinder;
+     }
+ 
+     public CycleReport findCycles() {
+@@ -32,9 +36,13 @@ public class AnalysisService {
+         if (current == null || current.graph() != graph) {
+             // два одновременных первых запроса могут посчитать отчёт дважды, это безопасно:
+             // анализ не меняет граф и даёт одинаковый результат, останется любой из двух
+-            current = new CachedReport(graph, cycleAnalyzer.analyze(graph));
++            current = new CachedReport(graph, analyze(graph));
+             cached = current;
+         }
+         return current.report();
+     }
++
++    private CycleReport analyze(BeanGraph graph) {
++        return new CycleReport(beanCycleFinder.find(graph), moduleCycleFinder.find(graph));
++    }
+ }
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponentsTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponentsTest.java
+new file mode 100644
+index 0000000..c478687
+--- /dev/null
++++ b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/algorithm/StronglyConnectedComponentsTest.java
+@@ -0,0 +1,68 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.algorithm;
++
++import org.junit.jupiter.api.Test;
++
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++import static org.artyomlbch.beangraphvisualizer.visualizer.algorithm.StronglyConnectedComponents.find;
++import static org.assertj.core.api.Assertions.assertThat;
++
++class StronglyConnectedComponentsTest {
++
++    // граф из рёбер вида "a>b"
++    private static Map<String, List<String>> graph(String... edges) {
++        Map<String, List<String>> graph = new LinkedHashMap<>();
++        for (String edge : edges) {
++            String[] ends = edge.split(">");
++            graph.computeIfAbsent(ends[0], vertex -> new ArrayList<>()).add(ends[1]);
++        }
++        return graph;
++    }
++
++    // b и c есть только как концы рёбер, ключами графа они не указаны, но компоненты у них есть
++    @Test
++    void chainSplitsIntoSingleVertices() {
++        assertThat(find(graph("a>b", "b>c")))
++                .containsExactlyInAnyOrder(Set.of("a"), Set.of("b"), Set.of("c"));
++    }
++
++    @Test
++    void twoVerticesDependingOnEachOtherAreOneComponent() {
++        assertThat(find(graph("a>b", "b>a"))).containsExactly(Set.of("a", "b"));
++    }
++
++    // d ведёт в цикл, но из цикла в d не вернуться, поэтому d - отдельная компонента
++    @Test
++    void vertexThatOnlyLeadsIntoCycleIsSeparate() {
++        assertThat(find(graph("d>a", "a>b", "b>c", "c>a")))
++                .containsExactlyInAnyOrder(Set.of("a", "b", "c"), Set.of("d"));
++    }
++
++    // из {a, b} есть ребро в {c, d}, обратного нет - это две разные компоненты
++    @Test
++    void separateCyclesAreSeparateComponents() {
++        assertThat(find(graph("a>b", "b>a", "b>c", "c>d", "d>c")))
++                .containsExactlyInAnyOrder(Set.of("a", "b"), Set.of("c", "d"));
++    }
++
++    // a ⇄ b и b ⇄ c: из любой вершины можно дойти до любой, это одна компонента
++    @Test
++    void intertwinedCyclesAreOneComponent() {
++        assertThat(find(graph("a>b", "b>a", "b>c", "c>b"))).containsExactly(Set.of("a", "b", "c"));
++    }
++
++    // петля не добавляет вершине соседей: a остаётся одиночной компонентой
++    @Test
++    void selfLoopKeepsVertexAlone() {
++        assertThat(find(graph("a>a", "a>b"))).containsExactlyInAnyOrder(Set.of("a"), Set.of("b"));
++    }
++
++    @Test
++    void emptyGraphHasNoComponents() {
++        assertThat(find(graph())).isEmpty();
++    }
++}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinderTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinderTest.java
+new file mode 100644
+index 0000000..dda511b
+--- /dev/null
++++ b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/BeanCycleFinderTest.java
+@@ -0,0 +1,86 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
++
++import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
++import org.junit.jupiter.api.Test;
++
++import java.util.List;
++
++import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.graph;
++import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.user;
++import static org.assertj.core.api.Assertions.assertThat;
++
++class BeanCycleFinderTest {
++
++    private final BeanCycleFinder finder = new BeanCycleFinder();
++
++    private static List<String> keys(List<BeanEdge> edges) {
++        return edges.stream().map(edge -> edge.source().id() + " -> " + edge.target().id()).toList();
++    }
++
++    @Test
++    void graphWithoutCyclesHasNoBeanCycles() {
++        BeanGraph graph = graph()
++                .with(user("controller"), user("service"), user("repository"))
++                .edge("controller", "service")
++                .edge("service", "repository")
++                .build();
++
++        assertThat(finder.find(graph)).isEmpty();
++    }
++
++    @Test
++    void beanCycleContainsOnlyEdgesInsideIt() {
++        BeanGraph graph = graph()
++                .with(user("a"), user("b"), user("c"))
++                .edge("a", "b")
++                .edge("b", "a")
++                .edge("a", "c")
++                .build();
++
++        List<BeanCycle> cycles = finder.find(graph);
++
++        assertThat(cycles).hasSize(1);
++        assertThat(cycles.getFirst().beans()).containsExactly("a", "b");
++        assertThat(keys(cycles.getFirst().edges())).containsExactlyInAnyOrder("a -> b", "b -> a");
++    }
++
++    @Test
++    void configurationThatInjectsItsOwnBeanIsCycle() {
++        BeanGraph graph = graph()
++                .with(user("appConfig"), user("client"))
++                .declaredIn("client", "appConfig")
++                .injection("appConfig", "client", InjectionType.FIELD, "com.example.app.client")
++                .build();
++
++        assertThat(finder.find(graph))
++                .extracting(BeanCycle::beans)
++                .containsExactly(List.of("appConfig", "client"));
++    }
++
++    @Test
++    void dependsOnCountsAsDependency() {
++        BeanGraph graph = graph()
++                .with(user("cache"), user("warmer"))
++                .dependsOn("cache", "warmer")
++                .edge("warmer", "cache")
++                .build();
++
++        assertThat(finder.find(graph)).hasSize(1);
++    }
++
++    @Test
++    void largestCycleComesFirst() {
++        BeanGraph graph = graph()
++                .with(user("a"), user("b"), user("c"), user("d"), user("e"))
++                .edge("a", "b").edge("b", "a")
++                .edge("c", "d").edge("d", "e").edge("e", "c")
++                .build();
++
++        assertThat(finder.find(graph))
++                .extracting(BeanCycle::beans)
++                .containsExactly(List.of("c", "d", "e"), List.of("a", "b"));
++    }
++}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetectorTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetectorTest.java
+deleted file mode 100644
+index b53f1fa..0000000
+--- a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleDetectorTest.java
++++ /dev/null
+@@ -1,60 +0,0 @@
+-package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+-
+-import org.junit.jupiter.api.Test;
+-
+-import java.util.ArrayList;
+-import java.util.LinkedHashMap;
+-import java.util.List;
+-import java.util.Map;
+-import java.util.Set;
+-
+-import static org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleDetector.findCycles;
+-import static org.assertj.core.api.Assertions.assertThat;
+-
+-class CycleDetectorTest {
+-
+-    // граф из рёбер вида "a>b"
+-    private static Map<String, List<String>> graph(String... edges) {
+-        Map<String, List<String>> graph = new LinkedHashMap<>();
+-        for (String edge : edges) {
+-            String[] ends = edge.split(">");
+-            graph.computeIfAbsent(ends[0], vertex -> new ArrayList<>()).add(ends[1]);
+-        }
+-        return graph;
+-    }
+-
+-    // b и c есть только как концы рёбер, ключами графа они не указаны
+-    @Test
+-    void chainHasNoCycles() {
+-        assertThat(findCycles(graph("a>b", "b>c"))).isEmpty();
+-    }
+-
+-    @Test
+-    void twoVerticesDependingOnEachOtherAreCycle() {
+-        assertThat(findCycles(graph("a>b", "b>a"))).containsExactly(Set.of("a", "b"));
+-    }
+-
+-    // d ведёт в цикл, но из цикла в d не вернуться, поэтому d в цикл не входит
+-    @Test
+-    void vertexThatOnlyLeadsIntoCycleIsNotPartOfIt() {
+-        assertThat(findCycles(graph("d>a", "a>b", "b>c", "c>a"))).containsExactly(Set.of("a", "b", "c"));
+-    }
+-
+-    // из {a, b} есть ребро в {c, d}, обратного нет — это два разных цикла
+-    @Test
+-    void separateCyclesAreFoundSeparately() {
+-        assertThat(findCycles(graph("a>b", "b>a", "b>c", "c>d", "d>c")))
+-                .containsExactlyInAnyOrder(Set.of("a", "b"), Set.of("c", "d"));
+-    }
+-
+-    // a ⇄ b и b ⇄ c: из любой вершины можно дойти до любой, это одна компонента
+-    @Test
+-    void intertwinedCyclesAreOneComponent() {
+-        assertThat(findCycles(graph("a>b", "b>a", "b>c", "c>b"))).containsExactly(Set.of("a", "b", "c"));
+-    }
+-
+-    @Test
+-    void selfLoopIsNotCycle() {
+-        assertThat(findCycles(graph("a>a", "a>b"))).isEmpty();
+-    }
+-}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzerTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinderTest.java
+similarity index 59%
+rename from src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzerTest.java
+rename to src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinderTest.java
+index 856a227..69d4d91 100644
+--- a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/CycleAnalyzerTest.java
++++ b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleCycleFinderTest.java
+@@ -1,10 +1,8 @@
+ package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+ 
+-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
+-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
+-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleCycle;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleLink;
+ import org.junit.jupiter.api.Test;
+@@ -18,87 +16,16 @@ import static org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereot
+ import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.bean;
+ import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.graph;
+ import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.system;
+-import static org.artyomlbch.beangraphvisualizer.visualizer.support.TestGraphs.user;
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.assertj.core.api.Assertions.tuple;
+ 
+-class CycleAnalyzerTest {
++class ModuleCycleFinderTest {
+ 
+     private static final String APP = "com.example.app.";
+ 
+-    // бины из user(...) лежат прямо в com.example.app и к модулям не относятся
+-    private final CycleAnalyzer analyzer = new CycleAnalyzer(new ModuleResolver(List.of("com.example.app")));
+-
+-    private static List<String> keys(List<BeanEdge> edges) {
+-        return edges.stream().map(edge -> edge.source().id() + " -> " + edge.target().id()).toList();
+-    }
+-
+-    @Test
+-    void graphWithoutCyclesHasNoBeanCycles() {
+-        BeanGraph graph = graph()
+-                .with(user("controller"), user("service"), user("repository"))
+-                .edge("controller", "service")
+-                .edge("service", "repository")
+-                .build();
+-
+-        assertThat(analyzer.analyze(graph).beanCycles()).isEmpty();
+-    }
+-
+-    @Test
+-    void beanCycleContainsOnlyEdgesInsideIt() {
+-        BeanGraph graph = graph()
+-                .with(user("a"), user("b"), user("c"))
+-                .edge("a", "b")
+-                .edge("b", "a")
+-                .edge("a", "c")
+-                .build();
+-
+-        List<BeanCycle> cycles = analyzer.analyze(graph).beanCycles();
+-
+-        assertThat(cycles).hasSize(1);
+-        assertThat(cycles.getFirst().beans()).containsExactly("a", "b");
+-        assertThat(keys(cycles.getFirst().edges())).containsExactlyInAnyOrder("a -> b", "b -> a");
+-    }
+-
+-
+-    @Test
+-    void configurationThatInjectsItsOwnBeanIsCycle() {
+-        BeanGraph graph = graph()
+-                .with(user("appConfig"), user("client"))
+-                .declaredIn("client", "appConfig")
+-                .injection("appConfig", "client", InjectionType.FIELD, "com.example.app.client")
+-                .build();
+-
+-        assertThat(analyzer.analyze(graph).beanCycles())
+-                .extracting(BeanCycle::beans)
+-                .containsExactly(List.of("appConfig", "client"));
+-    }
+-
+-    @Test
+-    void dependsOnCountsAsDependency() {
+-        BeanGraph graph = graph()
+-                .with(user("cache"), user("warmer"))
+-                .dependsOn("cache", "warmer")
+-                .edge("warmer", "cache")
+-                .build();
+-
+-        assertThat(analyzer.analyze(graph).beanCycles()).hasSize(1);
+-    }
++    // класс прямо в com.example.app к модулям не относится, модули - его подпакеты
++    private final ModuleCycleFinder finder = new ModuleCycleFinder(new ApplicationPackages(List.of("com.example.app")));
+ 
+-    @Test
+-    void largestCycleComesFirst() {
+-        BeanGraph graph = graph()
+-                .with(user("a"), user("b"), user("c"), user("d"), user("e"))
+-                .edge("a", "b").edge("b", "a")
+-                .edge("c", "d").edge("d", "e").edge("e", "c")
+-                .build();
+-
+-        assertThat(analyzer.analyze(graph).beanCycles())
+-                .extracting(BeanCycle::beans)
+-                .containsExactly(List.of("c", "d", "e"), List.of("a", "b"));
+-    }
+-
+-    // Циклы между модулями
+     @Test
+     void moduleCycleWithoutBeanCycle() {
+         BeanGraph graph = graph()
+@@ -111,11 +38,11 @@ class CycleAnalyzerTest {
+                 .edge("invoiceService", "orderRepository")
+                 .build();
+ 
+-        CycleReport report = analyzer.analyze(graph);
++        List<ModuleCycle> cycles = finder.find(graph);
+ 
+-        assertThat(report.beanCycles()).isEmpty();
+-        assertThat(report.moduleCycles()).hasSize(1);
+-        ModuleCycle cycle = report.moduleCycles().getFirst();
++        assertThat(new BeanCycleFinder().find(graph)).isEmpty();
++        assertThat(cycles).hasSize(1);
++        ModuleCycle cycle = cycles.getFirst();
+         assertThat(cycle.modules()).containsExactly(APP + "billing", APP + "orders");
+         // первой идёт самая слабая связь: её, скорее всего, и стоит разорвать
+         assertThat(cycle.links())
+@@ -129,7 +56,7 @@ class CycleAnalyzerTest {
+     void dependencyOnInterfaceOfOwnModuleIsNotCycle() {
+         BeanGraph graph = shippingGraph(APP + "shipping.ShipmentListener");
+ 
+-        assertThat(analyzer.analyze(graph).moduleCycles()).isEmpty();
++        assertThat(finder.find(graph)).isEmpty();
+     }
+ 
+     // Если тип из кода неизвестен (точка внедрения не найдена), берётся класс внедренного бина
+@@ -137,7 +64,7 @@ class CycleAnalyzerTest {
+     void withoutDeclaredTypeClassOfInjectedBeanIsUsed() {
+         BeanGraph graph = shippingGraph(null);
+ 
+-        assertThat(analyzer.analyze(graph).moduleCycles())
++        assertThat(finder.find(graph))
+                 .extracting(ModuleCycle::modules)
+                 .containsExactly(List.of(APP + "orders", APP + "shipping"));
+     }
+@@ -166,7 +93,7 @@ class CycleAnalyzerTest {
+                 .edge("orderService", "reportPrinter")
+                 .build();
+ 
+-        assertThat(analyzer.analyze(graph).moduleCycles()).isEmpty();
++        assertThat(finder.find(graph)).isEmpty();
+     }
+ 
+     // Класс приложения лежит прямо в основном пакете, а системные бины вне его — к модулям они не относятся
+@@ -181,6 +108,6 @@ class CycleAnalyzerTest {
+                 .edge("orderService", "dataSource")
+                 .build();
+ 
+-        assertThat(analyzer.analyze(graph).moduleCycles()).isEmpty();
++        assertThat(finder.find(graph)).isEmpty();
+     }
+ }
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolverTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolverTest.java
+deleted file mode 100644
+index 039f480..0000000
+--- a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/analysis/ModuleResolverTest.java
++++ /dev/null
+@@ -1,56 +0,0 @@
+-package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+-
+-import org.junit.jupiter.api.Test;
+-
+-import java.util.List;
+-
+-import static org.assertj.core.api.Assertions.assertThat;
+-
+-class ModuleResolverTest {
+-
+-    private final ModuleResolver resolver = new ModuleResolver(List.of("com.example.app"));
+-
+-    @Test
+-    void classInSubpackageBelongsToModule() {
+-        assertThat(resolver.moduleOf("com.example.app.orders.OrderService")).isEqualTo("com.example.app.orders");
+-    }
+-
+-    @Test
+-    void deeperSubpackageBelongsToSameModule() {
+-        assertThat(resolver.moduleOf("com.example.app.orders.internal.OrderRepository"))
+-                .isEqualTo("com.example.app.orders");
+-    }
+-
+-    @Test
+-    void nestedClassBelongsToModuleOfOuterClass() {
+-        assertThat(resolver.moduleOf("com.example.app.orders.OrderService$Item")).isEqualTo("com.example.app.orders");
+-    }
+-
+-    @Test
+-    void classInBasePackageHasNoModule() {
+-        assertThat(resolver.moduleOf("com.example.app.Application")).isNull();
+-    }
+-
+-    // com.example.application только начинается с тех же букв, это другой пакет
+-    @Test
+-    void classOutsideApplicationHasNoModule() {
+-        assertThat(resolver.moduleOf("org.springframework.web.client.RestTemplate")).isNull();
+-        assertThat(resolver.moduleOf("com.example.application.orders.OrderService")).isNull();
+-    }
+-
+-    @Test
+-    void longestBasePackageWins() {
+-        ModuleResolver nested = new ModuleResolver(List.of("com.example", "com.example.app"));
+-
+-        assertThat(nested.moduleOf("com.example.app.orders.OrderService")).isEqualTo("com.example.app.orders");
+-        assertThat(nested.moduleOf("com.example.app.Application")).isNull();
+-    }
+-
+-    @Test
+-    void applicationInDefaultPackage() {
+-        ModuleResolver defaultPackage = new ModuleResolver(List.of(""));
+-
+-        assertThat(defaultPackage.moduleOf("orders.OrderService")).isEqualTo("orders");
+-        assertThat(defaultPackage.moduleOf("Application")).isNull();
+-    }
+-}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/UserPackagesTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/UserPackagesTest.java
+deleted file mode 100644
+index 80dc0db..0000000
+--- a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/factory/UserPackagesTest.java
++++ /dev/null
+@@ -1,38 +0,0 @@
+-package org.artyomlbch.beangraphvisualizer.visualizer.core.factory;
+-
+-import org.junit.jupiter.api.Test;
+-
+-import java.util.List;
+-
+-import static org.assertj.core.api.Assertions.assertThat;
+-
+-class UserPackagesTest {
+-
+-    private static final List<String> USER_PACKAGES = List.of("com.foo");
+-
+-    @Test
+-    void classInPackageBelongsToIt() {
+-        assertThat(GraphFactory.belongsToPackages("com.foo.OrderService", USER_PACKAGES)).isTrue();
+-    }
+-
+-    @Test
+-    void classInSubpackageBelongsToIt() {
+-        assertThat(GraphFactory.belongsToPackages("com.foo.orders.OrderRepository", USER_PACKAGES)).isTrue();
+-    }
+-
+-    /** Раньше сравнение шло без точки, и com.foobar считался частью com.foo. */
+-    @Test
+-    void packageWithSamePrefixDoesNotBelongToIt() {
+-        assertThat(GraphFactory.belongsToPackages("com.foobar.Util", USER_PACKAGES)).isFalse();
+-    }
+-
+-    @Test
+-    void defaultPackageContainsEverything() {
+-        assertThat(GraphFactory.belongsToPackages("com.foobar.Util", List.of(""))).isTrue();
+-    }
+-
+-    @Test
+-    void noUserPackagesMeansNothingBelongs() {
+-        assertThat(GraphFactory.belongsToPackages("com.foo.OrderService", List.of())).isFalse();
+-    }
+-}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackagesTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackagesTest.java
+new file mode 100644
+index 0000000..fab702f
+--- /dev/null
++++ b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/packages/ApplicationPackagesTest.java
+@@ -0,0 +1,86 @@
++package org.artyomlbch.beangraphvisualizer.visualizer.core.packages;
++
++import org.junit.jupiter.api.Test;
++
++import java.util.List;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++class ApplicationPackagesTest {
++
++    private final ApplicationPackages app = new ApplicationPackages(List.of("com.example.app"));
++
++    // contains: лежит ли класс в приложении
++
++    @Test
++    void classInPackageIsContained() {
++        assertThat(app.contains("com.example.app.Application")).isTrue();
++    }
++
++    @Test
++    void classInSubpackageIsContained() {
++        assertThat(app.contains("com.example.app.orders.OrderRepository")).isTrue();
++    }
++
++    // раньше сравнение шло без точки, и com.example.application считался частью com.example.app
++    @Test
++    void packageWithSamePrefixIsNotContained() {
++        assertThat(app.contains("com.example.application.Util")).isFalse();
++    }
++
++    @Test
++    void defaultPackageContainsEverything() {
++        assertThat(new ApplicationPackages(List.of("")).contains("com.foobar.Util")).isTrue();
++    }
++
++    @Test
++    void withoutPackagesNothingIsContained() {
++        assertThat(new ApplicationPackages(List.of()).contains("com.example.app.Application")).isFalse();
++    }
++
++    // moduleOf: к какому модулю относится класс
++
++    @Test
++    void classInSubpackageBelongsToModule() {
++        assertThat(app.moduleOf("com.example.app.orders.OrderService")).isEqualTo("com.example.app.orders");
++    }
++
++    @Test
++    void deeperSubpackageBelongsToSameModule() {
++        assertThat(app.moduleOf("com.example.app.orders.internal.OrderRepository"))
++                .isEqualTo("com.example.app.orders");
++    }
++
++    @Test
++    void nestedClassBelongsToModuleOfOuterClass() {
++        assertThat(app.moduleOf("com.example.app.orders.OrderService$Item")).isEqualTo("com.example.app.orders");
++    }
++
++    @Test
++    void classInBasePackageHasNoModule() {
++        assertThat(app.moduleOf("com.example.app.Application")).isNull();
++    }
++
++    // com.example.application только начинается с тех же букв, это другой пакет
++    @Test
++    void classOutsideApplicationHasNoModule() {
++        assertThat(app.moduleOf("org.springframework.web.client.RestTemplate")).isNull();
++        assertThat(app.moduleOf("com.example.application.orders.OrderService")).isNull();
++    }
++
++    @Test
++    void longestBasePackageWins() {
++        ApplicationPackages nested = new ApplicationPackages(List.of("com.example", "com.example.app"));
++
++        assertThat(nested.moduleOf("com.example.app.orders.OrderService")).isEqualTo("com.example.app.orders");
++        assertThat(nested.moduleOf("com.example.app.Application")).isNull();
++    }
++
++    @Test
++    void applicationInDefaultPackage() {
++        ApplicationPackages defaultPackage = new ApplicationPackages(List.of(""));
++
++        assertThat(defaultPackage.moduleOf("orders.OrderService")).isEqualTo("orders");
++        assertThat(defaultPackage.moduleOf("Application")).isNull();
++    }
++}
+diff --git a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/service/AnalysisServiceTest.java b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/service/AnalysisServiceTest.java
+index 00993a1..704ffeb 100644
+--- a/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/service/AnalysisServiceTest.java
++++ b/src/test/java/org/artyomlbch/beangraphvisualizer/visualizer/core/service/AnalysisServiceTest.java
+@@ -1,9 +1,11 @@
+ package org.artyomlbch.beangraphvisualizer.visualizer.core.service;
+ 
+-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.CycleAnalyzer;
+-import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleResolver;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.BeanCycleFinder;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.analysis.ModuleCycleFinder;
++import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
+ import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.impl.InMemoryGraphRepository;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
++import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
+ import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
+ import org.artyomlbch.beangraphvisualizer.visualizer.service.AnalysisService;
+ import org.junit.jupiter.api.Test;
+@@ -16,21 +18,21 @@ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ class AnalysisServiceTest {
+ 
+-    // считает, сколько раз запускался анализ
+-    private static final class CountingAnalyzer extends CycleAnalyzer {
++    // считает, сколько раз запускался поиск циклов
++    private static final class CountingBeanCycleFinder extends BeanCycleFinder {
+         int calls;
+ 
+-        CountingAnalyzer() {
+-            super(new ModuleResolver(List.of()));
+-        }
+-
+         @Override
+-        public CycleReport analyze(BeanGraph graph) {
++        public List<BeanCycle> find(BeanGraph graph) {
+             calls++;
+-            return super.analyze(graph);
++            return super.find(graph);
+         }
+     }
+ 
++    private static AnalysisService service(InMemoryGraphRepository repository, BeanCycleFinder finder) {
++        return new AnalysisService(repository, finder, new ModuleCycleFinder(new ApplicationPackages(List.of())));
++    }
++
+     private static BeanGraph cyclicGraph() {
+         return graph()
+                 .with(user("a"), user("b"))
+@@ -43,13 +45,13 @@ class AnalysisServiceTest {
+     void analysesTheGraphOnlyOnce() {
+         InMemoryGraphRepository repository = new InMemoryGraphRepository();
+         repository.write(cyclicGraph());
+-        CountingAnalyzer analyzer = new CountingAnalyzer();
+-        AnalysisService service = new AnalysisService(repository, analyzer);
++        CountingBeanCycleFinder finder = new CountingBeanCycleFinder();
++        AnalysisService service = service(repository, finder);
+ 
+         CycleReport first = service.findCycles();
+         CycleReport second = service.findCycles();
+ 
+-        assertThat(analyzer.calls).isEqualTo(1);
++        assertThat(finder.calls).isEqualTo(1);
+         assertThat(second).isSameAs(first);
+         assertThat(first.beanCycles()).hasSize(1);
+     }
+@@ -58,14 +60,14 @@ class AnalysisServiceTest {
+     void analysesAgainWhenTheGraphIsReplaced() {
+         InMemoryGraphRepository repository = new InMemoryGraphRepository();
+         repository.write(cyclicGraph());
+-        CountingAnalyzer analyzer = new CountingAnalyzer();
+-        AnalysisService service = new AnalysisService(repository, analyzer);
++        CountingBeanCycleFinder finder = new CountingBeanCycleFinder();
++        AnalysisService service = service(repository, finder);
+         service.findCycles();
+ 
+         repository.write(graph().with(user("a"), user("b")).edge("a", "b").build());
+         CycleReport report = service.findCycles();
+ 
+-        assertThat(analyzer.calls).isEqualTo(2);
++        assertThat(finder.calls).isEqualTo(2);
+         assertThat(report.beanCycles()).isEmpty();
+     }
+ }

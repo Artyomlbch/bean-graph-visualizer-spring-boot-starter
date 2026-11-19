@@ -1,13 +1,20 @@
-package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
+package org.artyomlbch.beangraphvisualizer.visualizer.algorithm;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-// поиск циклов в графе при помощи
-// алгоритма Тарьяна
-// T - тип вершины
-public final class CycleDetector<T> {
 
-    // граф, вершина - коллекция вершин, в которые из нее ведут ребра
+public final class StronglyConnectedComponents<T> {
+
+    // вершина -> вершины, в которые из нее ведут ребра
     private final Map<T, ? extends Collection<T>> graph;
 
     private final Map<T, Integer> index = new HashMap<>();
@@ -16,22 +23,21 @@ public final class CycleDetector<T> {
     private final Deque<T> stack = new ArrayDeque<>();
     private final Set<T> onStack = new HashSet<>();
 
-    private final List<Set<T>> cycles = new ArrayList<>();
+    private final List<Set<T>> components = new ArrayList<>();
     private int counter = 0;
 
-    private CycleDetector(Map<T, ? extends Collection<T>> graph) {
+    private StronglyConnectedComponents(Map<T, ? extends Collection<T>> graph) {
         this.graph = graph;
     }
 
-    // возвращает компоненты сильной связности из >=2 вершин
-    public static <T> List<Set<T>> findCycles(Map<T, ? extends Collection<T>> graph) {
-        CycleDetector<T> detector = new CycleDetector<>(graph);
+    public static <T> List<Set<T>> find(Map<T, ? extends Collection<T>> graph) {
+        StronglyConnectedComponents<T> search = new StronglyConnectedComponents<>(graph);
         for (T vertex : graph.keySet()) {
-            if (!detector.index.containsKey(vertex)) {
-                detector.visit(vertex);
+            if (!search.index.containsKey(vertex)) {
+                search.visit(vertex);
             }
         }
-        return detector.cycles;
+        return search.components;
     }
 
     private void visit(T vertex) {
@@ -43,7 +49,7 @@ public final class CycleDetector<T> {
         stack.push(vertex);
         onStack.add(vertex);
 
-        Collection<T> next =  graph.get(vertex);
+        Collection<T> next = graph.get(vertex);
         if (next != null) {
             for (T target : next) {
                 if (!index.containsKey(target)) {
@@ -55,7 +61,6 @@ public final class CycleDetector<T> {
             }
         }
 
-        // определение начала цикла и сбор нод цикла
         if (lowLink.get(vertex).equals(index.get(vertex))) {
             Set<T> component = new LinkedHashSet<>();
 
@@ -66,9 +71,7 @@ public final class CycleDetector<T> {
                 component.add(member);
             } while (!member.equals(vertex));
 
-            if (component.size() > 1) {
-                cycles.add(component);
-            }
+            components.add(component);
         }
     }
 }

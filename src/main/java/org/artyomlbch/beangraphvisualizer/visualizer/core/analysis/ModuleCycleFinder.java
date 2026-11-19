@@ -1,12 +1,12 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.core.analysis;
 
+import org.artyomlbch.beangraphvisualizer.visualizer.algorithm.StronglyConnectedComponents;
+import org.artyomlbch.beangraphvisualizer.visualizer.core.packages.ApplicationPackages;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.EdgeKind;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.BeanCycle;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.CycleReport;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleCycle;
 import org.artyomlbch.beangraphvisualizer.visualizer.model.analysis.ModuleLink;
 
@@ -14,20 +14,17 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-// ищет циклы между бинами и между модулями приложения
-public class CycleAnalyzer {
+// Модуль это первый подпакет пакета приложения (ApplicationPackages).
+// Модуль A зависит от модуля B, если код класса из A получает бин, тип которого объявлен в B.
+// Считаются только INJECTION, DECLARED_IN и DEPENDS_ON зависимостями кода не являются
+public class ModuleCycleFinder {
 
-    private static final Comparator<BeanCycle> LARGEST_BEAN_CYCLE_FIRST =
-            Comparator.comparingInt((BeanCycle cycle) -> cycle.beans().size()).reversed()
-                    .thenComparing(cycle -> cycle.beans().getFirst());
-
-    private static final Comparator<ModuleCycle> LARGEST_MODULE_CYCLE_FIRST =
+    private static final Comparator<ModuleCycle> LARGEST_FIRST =
             Comparator.comparingInt((ModuleCycle cycle) -> cycle.modules().size()).reversed()
                     .thenComparing(cycle -> cycle.modules().getFirst());
 
@@ -36,35 +33,14 @@ public class CycleAnalyzer {
                     .thenComparing(ModuleLink::from)
                     .thenComparing(ModuleLink::to);
 
-    private final ModuleResolver modules;
+    private final ApplicationPackages packages;
 
-    public CycleAnalyzer(ModuleResolver modules) {
-        this.modules = modules;
+    public ModuleCycleFinder(ApplicationPackages packages) {
+        this.packages = packages;
     }
 
-    public CycleReport analyze(BeanGraph graph) {
-        return new CycleReport(beanCycles(graph), moduleCycles(graph));
-    }
-
-    List<BeanCycle> beanCycles(BeanGraph graph) {
-        Map<String, Set<String>> dependencies = new LinkedHashMap<>();
-        for (BeanEdge edge : graph.getEdges()) {
-            dependencies.computeIfAbsent(edge.source().id(), id -> new LinkedHashSet<>())
-                    .add(edge.target().id());
-        }
-
-        List<BeanCycle> cycles = new ArrayList<>();
-        for (Set<String> beans : CycleDetector.findCycles(dependencies)) {
-            List<BeanEdge> inside = graph.getEdges().stream()
-                    .filter(edge -> beans.contains(edge.source().id()) && beans.contains(edge.target().id()))
-                    .toList();
-            cycles.add(new BeanCycle(beans.stream().sorted().toList(), inside));
-        }
-        cycles.sort(LARGEST_BEAN_CYCLE_FIRST);
-        return cycles;
-    }
-
-    List<ModuleCycle> moduleCycles(BeanGraph graph) {
+    // первыми идут самые большие циклы, связи внутри цикла идут от самой слабой
+    public List<ModuleCycle> find(BeanGraph graph) {
         Map<String, BeanNode> declaringConfiguration = new HashMap<>();
         for (BeanEdge edge : graph.getEdges()) {
             if (edge.kind() == EdgeKind.DECLARED_IN) {
@@ -72,15 +48,15 @@ public class CycleAnalyzer {
             }
         }
 
-        // модуль -> модуль -> рёбра, из которых получилась зависимость
+        // модуль -> модуль -> ребра, из которых получилась зависимость
         Map<String, Map<String, List<BeanEdge>>> links = new TreeMap<>();
         for (BeanEdge edge : graph.getEdges()) {
             if (edge.kind() != EdgeKind.INJECTION) {
                 continue;
             }
 
-            String from = modules.moduleOf(codeOwner(edge, declaringConfiguration).fullClassName());
-            String to = modules.moduleOf(edge.declaredType() != null
+            String from = packages.moduleOf(codeOwner(edge, declaringConfiguration).fullClassName());
+            String to = packages.moduleOf(edge.declaredType() != null
                     ? edge.declaredType()
                     : edge.target().fullClassName());
             if (from == null || to == null || from.equals(to)) {
@@ -96,7 +72,11 @@ public class CycleAnalyzer {
         links.forEach((from, targets) -> dependencies.put(from, targets.keySet()));
 
         List<ModuleCycle> cycles = new ArrayList<>();
-        for (Set<String> cycleModules : CycleDetector.findCycles(dependencies)) {
+        for (Set<String> cycleModules : StronglyConnectedComponents.find(dependencies)) {
+            // одиночный модуль циклом не считается
+            if (cycleModules.size() < 2) {
+                continue;
+            }
             List<ModuleLink> inside = new ArrayList<>();
             links.forEach((from, targets) -> targets.forEach((to, edges) -> {
                 if (cycleModules.contains(from) && cycleModules.contains(to)) {
@@ -106,7 +86,7 @@ public class CycleAnalyzer {
             inside.sort(WEAKEST_LINK_FIRST);
             cycles.add(new ModuleCycle(cycleModules.stream().sorted().toList(), inside));
         }
-        cycles.sort(LARGEST_MODULE_CYCLE_FIRST);
+        cycles.sort(LARGEST_FIRST);
         return cycles;
     }
 
