@@ -1,11 +1,11 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.support;
 
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanScope;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.InjectionType;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.filter.Stereotype;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanEdge;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanNode;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanScope;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.InjectionType;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.Stereotype;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

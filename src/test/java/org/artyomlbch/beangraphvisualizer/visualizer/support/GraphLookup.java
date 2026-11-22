@@ -1,8 +1,8 @@
 package org.artyomlbch.beangraphvisualizer.visualizer.support;
 
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanEdge;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanNode;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanEdge;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanNode;
 
 import java.util.Collection;
 import java.util.List;

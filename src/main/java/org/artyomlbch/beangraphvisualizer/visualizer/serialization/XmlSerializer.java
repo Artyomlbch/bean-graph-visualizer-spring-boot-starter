@@ -1,0 +1,23 @@
+package org.artyomlbch.beangraphvisualizer.visualizer.serialization;
+
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanGraph;
+import org.springframework.http.MediaType;
+import tools.jackson.dataformat.xml.XmlMapper;
+
+import java.nio.charset.StandardCharsets;
+
+public class XmlSerializer implements Serializer {
+
+    private final XmlMapper xmlMapper = XmlMapper.builder().build();
+
+    @Override
+    public String serialize(Object graph) {
+        return xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(graph);
+    }
+
+    @Override
+    public MediaType mediaType() {
+        return new MediaType(MediaType.APPLICATION_XML, StandardCharsets.UTF_8);
+    }
+}
+

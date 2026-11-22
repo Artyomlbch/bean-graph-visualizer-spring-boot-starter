@@ -1,12 +1,11 @@
 package org.artyomlbch.beangraphvisualizer.visualizer;
 
-
-import org.artyomlbch.beangraphvisualizer.visualizer.api.GraphController;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.repository.GraphRepository;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.JsonSerializer;
-import org.artyomlbch.beangraphvisualizer.visualizer.core.serializer.impl.XmlSerializer;
-import org.artyomlbch.beangraphvisualizer.visualizer.model.BeanGraph;
-import org.artyomlbch.beangraphvisualizer.visualizer.ui.IocVisualizerUiConfigurer;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.model.BeanGraph;
+import org.artyomlbch.beangraphvisualizer.visualizer.graph.store.GraphRepository;
+import org.artyomlbch.beangraphvisualizer.visualizer.serialization.JsonSerializer;
+import org.artyomlbch.beangraphvisualizer.visualizer.serialization.XmlSerializer;
+import org.artyomlbch.beangraphvisualizer.visualizer.web.GraphController;
+import org.artyomlbch.beangraphvisualizer.visualizer.web.IocVisualizerUiConfigurer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.FilteredClassLoader;
